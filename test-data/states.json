@@ -1,0 +1,19 @@
+{
+  "demoScramble": {
+    "U": ["blue", "white", "green", "yellow"],
+    "R": ["orange", "green", "white", "blue"],
+    "F": ["red", "green", "orange", "orange"],
+    "D": ["blue", "green", "yellow", "red"],
+    "L": ["red", "yellow", "orange", "white"],
+    "B": ["red", "white", "yellow", "blue"]
+  },
+  "invalidCount": {
+    "white": 3,
+    "red": 5
+  },
+  "clockwiseRotation": {
+    "input": [0, 1, 2, 3],
+    "output": [2, 0, 3, 1]
+  }
+}
+
