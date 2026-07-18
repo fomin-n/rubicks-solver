@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import json
 import random
+from pathlib import Path
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from app.cube.coordinates import decode_state, encode_state
-from app.cube.facelets import facelets_to_state, state_to_facelets
+from app.cube.facelets import facelets_to_state, state_to_facelet_labels, state_to_facelets
 from app.cube.model import SOLVED_STATE, Color, Face
-from app.cube.moves import MOVES, apply_sequence
+from app.cube.moves import MOVES, apply_move, apply_sequence
 
 TARGET = {
     Face.U: Color.WHITE,
@@ -56,3 +58,16 @@ def test_facelet_round_trip_for_scrambles():
 def test_solved_facelets_normalize():
     facelets = {face: [color] * 4 for face, color in TARGET.items()}
     assert facelets_to_state(facelets).state.is_solved
+
+
+def test_unique_facelet_move_fixture_matches_cube_engine():
+    fixture_path = Path(__file__).parents[2] / "test-data" / "move-facelet-permutations.json"
+    fixture = json.loads(fixture_path.read_text())
+    expected = {
+        move.notation: {
+            face.value: labels
+            for face, labels in state_to_facelet_labels(apply_move(SOLVED_STATE, move)).items()
+        }
+        for move in MOVES
+    }
+    assert fixture == expected
