@@ -1,0 +1,16 @@
+.DS_Store
+.cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+__pycache__/
+*.py[cod]
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+.env
+.env.*
+!.env.example
+
