@@ -6,6 +6,8 @@ test("demo scramble reaches the solved screen through the real API", async ({ pa
   await expect(page.getByRole("heading", { name: "Check every facelet" })).toBeVisible();
   await page.getByRole("button", { name: "Validate and solve" }).click();
   await expect(page.getByText(/Move 1 of/)).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(async () => await page.locator(".turn-arrow-highlight").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
 
   const total = Number((await page.getByText(/Move 1 of/).textContent())?.match(/of (\d+)/)?.[1]);
   expect(total).toBeGreaterThan(0);
@@ -13,4 +15,3 @@ test("demo scramble reaches the solved screen through the real API", async ({ pa
   await expect(page.getByRole("heading", { name: "Cube solved" })).toBeVisible();
   await expect(page.getByText(`${total} optimal HTM moves. Nice work.`)).toBeVisible();
 });
-

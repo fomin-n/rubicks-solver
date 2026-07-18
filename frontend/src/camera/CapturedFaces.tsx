@@ -5,14 +5,15 @@ interface Props {
   previews: Partial<Record<Face, CapturedFacePreview>>;
   activeFace?: Face | null;
   problemFaces?: Face[];
+  compact?: boolean;
   busy: boolean;
   onRetake: (face: Face) => void;
 }
 
-export function CapturedFaces({ previews, activeFace, problemFaces = [], busy, onRetake }: Props) {
+export function CapturedFaces({ previews, activeFace, problemFaces = [], compact = false, busy, onRetake }: Props) {
   const captured = SCAN_ORDER.filter((face) => previews[face]);
   if (!captured.length) return null;
-  return <section className="captured-faces" aria-label="Captured faces">
+  return <section className={`captured-faces${compact ? " compact" : ""}`} aria-label="Captured faces">
     <div className="captured-faces-heading"><strong>Captured faces</strong><span>{captured.length} / 6</span></div>
     <div className="captured-face-strip">
       {captured.map((face) => {

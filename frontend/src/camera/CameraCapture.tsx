@@ -178,14 +178,14 @@ export function CameraCapture(props: Props) {
 
   const status = props.autoEnabled ? READINESS_MESSAGES[machine.status] : "Auto capture is off";
   return <div className="camera-stack">
-    {props.stream ? <>
+    <div className="camera-stage">{props.stream ? <>
       <video ref={videoRef} autoPlay muted playsInline className="camera-video" aria-label="Live camera preview" />
       <div className="scan-guide" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className={`capture-readiness ${machine.status}`} role="status">
         <span>{status}</span>
         {props.autoEnabled && <progress max="1" value={machine.progress} aria-label="Auto-capture hold progress" />}
       </div>
-    </> : <div className="camera-placeholder">Camera-free image mode</div>}
+    </> : <div className="camera-placeholder">Camera-free image mode</div>}</div>
     {props.problem && <div className="camera-problem" role="alert"><span>{props.problem.message}</span><button onClick={props.onRecover}>Recover camera</button></div>}
     <div className="camera-actions">
       <label className="toggle"><input type="checkbox" checked={props.autoEnabled} onChange={(event) => props.onAutoChange(event.target.checked)} /> Auto capture</label>
@@ -199,8 +199,7 @@ export function CameraCapture(props: Props) {
         if (file) props.onCapture(file, "upload");
         event.currentTarget.value = "";
       }} /></label>
-    </div>
-    {debugEnabled && metrics && <details className="capture-debug" open><summary>Capture diagnostics</summary><pre>{JSON.stringify({
+      {debugEnabled && metrics && <details className="capture-debug"><summary>Capture diagnostics</summary><pre>{JSON.stringify({
       metrics,
       thresholds: {
         warningMinBrightness: AUTO_CAPTURE_CONFIG.warningMinBrightness,
@@ -224,6 +223,7 @@ export function CameraCapture(props: Props) {
         smoothedMotion: machine.smoothedMotion,
       },
       machine,
-    }, null, 2)}</pre></details>}
+      }, null, 2)}</pre></details>}
+    </div>
   </div>;
 }

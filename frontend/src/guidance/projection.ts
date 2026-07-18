@@ -33,6 +33,7 @@ export function faceletPolygons(face: VisibleFace): Point[][] {
 
 export interface ArrowGeometry {
   path: string;
+  badge: Point;
   direction: "clockwise" | "counterclockwise" | "half";
   sweepSign: -1 | 1;
   halfTurn: boolean;
@@ -41,14 +42,16 @@ export interface ArrowGeometry {
 export function arrowGeometry(move: Pick<CubeMove, "face" | "quarterTurns">): ArrowGeometry {
   const halfTurn = Math.abs(move.quarterTurns) === 2;
   const sweepSign: -1 | 1 = move.quarterTurns < 0 ? -1 : 1;
-  const start = sweepSign > 0 ? -140 : 140;
-  const sweep = (halfTurn ? 180 : 220) * sweepSign;
-  const points = Array.from({ length: 18 }, (_, index) => {
-    const angle = (start + sweep * index / 17) * Math.PI / 180;
-    return projectPoint(FACE_QUADS[move.face], 0.5 + Math.cos(angle) * 0.32, 0.5 + Math.sin(angle) * 0.32);
+  const start = sweepSign > 0 ? -145 : 145;
+  const sweep = (halfTurn ? 205 : 150) * sweepSign;
+  const pointCount = halfTurn ? 26 : 20;
+  const points = Array.from({ length: pointCount }, (_, index) => {
+    const angle = (start + sweep * index / (pointCount - 1)) * Math.PI / 180;
+    return projectPoint(FACE_QUADS[move.face], 0.5 + Math.cos(angle) * 0.36, 0.5 + Math.sin(angle) * 0.36);
   });
   return {
     path: points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" "),
+    badge: projectPoint(FACE_QUADS[move.face], 0.5, 0.5),
     direction: halfTurn ? "half" : sweepSign > 0 ? "clockwise" : "counterclockwise",
     sweepSign,
     halfTurn,

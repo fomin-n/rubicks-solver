@@ -16,8 +16,8 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
   const faces = Object.keys(FACE_QUADS) as VisibleFace[];
   return <svg className={`guidance-overlay${calibration ? " calibration" : ""}`} viewBox="0 0 360 310" role="img" aria-label={calibration ? "Colored Up Front Right orientation guide" : move.description}>
     <defs>
-      <marker id="arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" /></marker>
-      <marker id="arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="3" orient="auto-start-reverse"><path d="M7,0 L7,6 L0,3 z" /></marker>
+      <marker id="arrow-head" markerWidth="7" markerHeight="7" refX="5.5" refY="2.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,5 L6,2.5 z" /></marker>
+      <marker id="arrow-start" markerWidth="7" markerHeight="7" refX="0.5" refY="2.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M6,0 L6,5 L0,2.5 z" /></marker>
     </defs>
     {faces.flatMap((face) => faceletPolygons(face).map((points, index) => <polygon
       key={`${face}-${index}`}
@@ -33,7 +33,7 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
       <path d={arrow.path} className="turn-arrow-outline" />
       <path d={arrow.path} className="turn-arrow" markerEnd="url(#arrow-head)" markerStart={arrow.halfTurn ? "url(#arrow-start)" : undefined} />
       <path d={arrow.path} className="turn-arrow-highlight" />
-      {arrow.halfTurn && <g className="half-turn-badge" aria-label="180 degree turn"><rect x="145" y="278" width="70" height="28" rx="14" /><text className="half-turn-label" x="180" y="299">180°</text></g>}
+      {arrow.halfTurn && <g className="half-turn-badge" aria-label="180 degree turn"><rect x={arrow.badge.x - 24} y={arrow.badge.y - 11} width="48" height="22" rx="11" /><text className="half-turn-label" x={arrow.badge.x} y={arrow.badge.y + 6}>180°</text></g>}
     </g>}
     {calibration && faces.map((face) => <text key={`${face}-label`} className="guide-face-label" x={face === "F" ? 125 : face === "R" ? 235 : 180} y={face === "U" ? 88 : 190}>{face}</text>)}
     <title>{COLORS.length} physical colors shown from the current cube state</title>

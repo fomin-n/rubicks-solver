@@ -26,3 +26,10 @@ it("shows four immediate swatches per face and retakes only the selected face", 
   expect(articles[0]).toBeInTheDocument();
   expect(within(articles[1]).getByText("R")).toBeInTheDocument();
 });
+
+it("uses the fixed compact dock treatment while scanning", () => {
+  render(<CapturedFaces compact previews={{ F: preview("F") }} busy={false} onRetake={vi.fn()} />);
+  expect(screen.getByLabelText("Captured faces")).toHaveClass("compact");
+  expect(screen.getByLabelText("F recognized sticker preview").children).toHaveLength(4);
+  expect(screen.getByRole("button", { name: "Retake" })).toBeEnabled();
+});

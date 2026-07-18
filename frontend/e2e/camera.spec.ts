@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Buffer } from "node:buffer";
 
 const SCANS = {
   F: ["red", "green", "orange", "orange"],
@@ -9,6 +10,7 @@ const SCANS = {
   D: ["blue", "green", "yellow", "red"],
 } as const;
 const INVALID_SCANS = { ...SCANS, F: ["green", "red", "orange", "orange"] } as const;
+const SCAN_ORDER_INDEX = { F: 0, R: 1, B: 2, L: 3, U: 4, D: 5 } as const;
 type ScanFixture = Record<keyof typeof SCANS, readonly string[]>;
 
 async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
@@ -82,6 +84,63 @@ async function startCameraScan(page: Page) {
   await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
 }
 
+interface ScanGeometry {
+  stage: { x: number; y: number; width: number; height: number };
+  guide: { x: number; y: number; width: number; height: number } | null;
+}
+
+async function scanGeometry(page: Page): Promise<ScanGeometry> {
+  return await page.evaluate(() => {
+    const rectangle = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    };
+    const stage = rectangle(".camera-stage");
+    if (!stage) throw new Error("Camera stage is missing");
+    const scrolling = document.scrollingElement;
+    if (!scrolling || scrolling.scrollHeight > window.innerHeight + 1 || scrolling.scrollWidth > window.innerWidth + 1) {
+      throw new Error("Scan document exceeds the mobile viewport");
+    }
+    if (window.scrollX !== 0 || window.scrollY !== 0) throw new Error("Scan document moved away from its origin");
+    const guide = rectangle(".scan-guide");
+    const readiness = rectangle(".capture-readiness");
+    if (guide && readiness) {
+      const overlaps = readiness.x < guide.x + guide.width && readiness.x + readiness.width > guide.x
+        && readiness.y < guide.y + guide.height && readiness.y + readiness.height > guide.y;
+      if (overlaps) throw new Error("Capture status overlaps the cube guide");
+    }
+    return { stage, guide };
+  });
+}
+
+function expectSameGeometry(actual: ScanGeometry, expected: ScanGeometry) {
+  for (const key of ["x", "y", "width", "height"] as const) expect(actual.stage[key]).toBeCloseTo(expected.stage[key], 0);
+  if (expected.guide) {
+    expect(actual.guide).not.toBeNull();
+    for (const key of ["x", "y", "width", "height"] as const) expect(actual.guide![key]).toBeCloseTo(expected.guide[key], 0);
+  }
+}
+
+async function uploadSyntheticFace(page: Page, face: keyof typeof SCANS) {
+  const base64 = await page.evaluate((stickers) => {
+    const colors: Record<string, string> = { red: "#d72d3d", blue: "#2468ce", orange: "#e87918", white: "#e4e7df", green: "#24a665", yellow: "#dfc525" };
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 640;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#121212";
+    context.fillRect(0, 0, 640, 640);
+    stickers.forEach((color, index) => {
+      context.fillStyle = colors[color];
+      context.fillRect(index % 2 * 320 + 12, Math.floor(index / 2) * 320 + 12, 296, 296);
+    });
+    return canvas.toDataURL("image/png").split(",")[1];
+  }, [...SCANS[face]]);
+  await page.locator('input[type="file"]').setInputFiles({ name: `${face}.png`, mimeType: "image/png", buffer: Buffer.from(base64, "base64") });
+}
+
 test("physical-frame auto capture previews, retakes, solves directly, and guides safely", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Canvas MediaStream injection is the deterministic Chromium camera test.");
   await installSyntheticCamera(page);
@@ -91,6 +150,8 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Captured faces", { exact: true })).toBeVisible();
   await expect(page.getByLabel("F recognized sticker preview").locator("span")).toHaveCount(4);
+  const stableGeometry = await scanGeometry(page);
+  await page.getByText("Capture diagnostics", { exact: true }).click();
   await expect(page.getByText("smoothedMotion", { exact: false })).toBeVisible();
 
   await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("R"));
@@ -98,6 +159,7 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   const frontPreview = page.locator('article.captured-face[data-face="F"]');
   await frontPreview.getByRole("button", { name: "Retake" }).click();
   await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
+  expectSameGeometry(await scanGeometry(page), stableGeometry);
   await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("F"));
   await expect(page.getByRole("heading", { name: "B · Back" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByLabel("R recognized sticker preview")).toBeVisible();
@@ -143,13 +205,34 @@ test("manual capture commits immediately without a second confirmation", async (
   await expect(page.getByRole("button", { name: "Use this capture anyway" })).toHaveCount(0);
 });
 
+test("portrait scan geometry stays fixed for the complete F through D sequence", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start scanning" }).click();
+  await page.getByRole("button", { name: "Use image files instead" }).click();
+  await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
+  const initial = await scanGeometry(page);
+
+  const steps = [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"], ["U", "D · Down"]] as const;
+  for (const [face, nextHeading] of steps) {
+    await uploadSyntheticFace(page, face);
+    await expect(page.getByRole("heading", { name: nextHeading })).toBeVisible({ timeout: 15_000 });
+    expectSameGeometry(await scanGeometry(page), initial);
+    await expect(page.locator(".scan-progress .current")).toHaveText(nextHeading[0]);
+    await expect(page.locator(".scan-progress .done")).toHaveCount(SCAN_ORDER_INDEX[face] + 1);
+  }
+  await uploadSyntheticFace(page, "D");
+  await expect(page.getByText(/Move 1 of/)).toBeVisible({ timeout: 20_000 });
+});
+
 test("an invalid six-face scan enters targeted recovery and preserves every preview", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Canvas MediaStream injection is the deterministic Chromium camera test.");
   await installSyntheticCamera(page, INVALID_SCANS);
   await startCameraScan(page);
+  const initial = await scanGeometry(page);
   for (const [face, nextHeading] of [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"], ["U", "D · Down"], ["D", "Check the highlighted faces"]] as const) {
     await page.evaluate((nextFace) => (window as unknown as { setSyntheticFace: (value: string) => void }).setSyntheticFace(nextFace), face);
     await expect(page.getByRole("heading", { name: nextHeading })).toBeVisible({ timeout: 20_000 });
+    if (face !== "D") expectSameGeometry(await scanGeometry(page), initial);
   }
   await expect(page.locator("article.captured-face")).toHaveCount(6);
   await expect(page.getByRole("button", { name: "Advanced correction" })).toBeVisible();
