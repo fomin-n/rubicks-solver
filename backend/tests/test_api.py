@@ -143,3 +143,32 @@ def test_upload_rejects_wrong_type_and_oversize():
         files={"image": ("face.png", b"0" * (5 * 1024 * 1024 + 1), "image/png")},
     )
     assert large.status_code == 413
+
+
+def test_candidate_commit_modes_are_non_destructive():
+    session_id = _session_id()
+    rejected = client.post(
+        f"/api/sessions/{session_id}/faces/F?commitMode=if_acceptable",
+        files={"image": ("blurred.png", _png(), "image/png")},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["acceptable"] is False
+    assert rejected.json()["committed"] is False
+    assert rejected.json()["readinessCode"] == "blurry"
+    assert client.get(f"/api/sessions/{session_id}").json()["scannedFaces"] == []
+
+    diagnostic = client.post(
+        f"/api/sessions/{session_id}/faces/F?commitMode=never",
+        files={"image": ("face.png", _face_png([Color.RED] * 4), "image/png")},
+    )
+    assert diagnostic.status_code == 200
+    assert diagnostic.json()["committed"] is False
+    assert client.get(f"/api/sessions/{session_id}").json()["scannedFaces"] == []
+
+    forced = client.post(
+        f"/api/sessions/{session_id}/faces/F?commitMode=always",
+        files={"image": ("blurred.png", _png(), "image/png")},
+    )
+    assert forced.status_code == 200
+    assert forced.json()["committed"] is True
+    assert client.get(f"/api/sessions/{session_id}").json()["scannedFaces"] == ["F"]

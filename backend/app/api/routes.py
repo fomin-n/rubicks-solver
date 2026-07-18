@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Query, UploadFile
 
 from app.cube.facelets import facelets_to_state, state_to_facelets
 from app.cube.model import FACE_ORDER, SCAN_ORDER, Color, Face
@@ -14,9 +14,15 @@ from app.cube.solver import get_solver
 from app.cube.validation import validate_facelets
 from app.sessions.store import Session, store
 from app.vision.colors import classify_samples
-from app.vision.processing import MAX_UPLOAD_BYTES, ImageProcessingError, process_face_image
+from app.vision.processing import (
+    MAX_UPLOAD_BYTES,
+    ImageProcessingError,
+    QualityReport,
+    process_face_image,
+)
 
 from .schemas import (
+    CommitMode,
     FaceletsPayload,
     HealthResponse,
     MoveResponse,
@@ -87,7 +93,10 @@ def delete_session(session_id: UUID) -> None:
 
 @router.post("/sessions/{session_id}/faces/{face}", response_model=UploadResponse)
 async def upload_face(
-    session_id: UUID, face: Face, image: Annotated[UploadFile, File()]
+    session_id: UUID,
+    face: Face,
+    image: Annotated[UploadFile, File()],
+    commit_mode: Annotated[CommitMode, Query(alias="commitMode")] = CommitMode.ALWAYS,
 ) -> UploadResponse:
     session = _session_or_404(session_id)
     if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
@@ -99,21 +108,43 @@ async def upload_face(
         processed = process_face_image(data)
     except ImageProcessingError as error:
         raise ApiError(422, "invalid_image", str(error)) from error
-    session.scans[face] = processed
-    session.facelets = None
-    session.confidence = None
-    if all(scan_face in session.scans for scan_face in SCAN_ORDER):
-        session.facelets, session.confidence = classify_samples(
-            {scan_face: session.scans[scan_face].samples for scan_face in FACE_ORDER}
-        )
+    acceptable = not processed.quality.retake_recommended
+    committed = commit_mode == CommitMode.ALWAYS or (
+        commit_mode == CommitMode.IF_ACCEPTABLE and acceptable
+    )
+    if committed:
+        session.scans[face] = processed
+        session.facelets = None
+        session.confidence = None
+        if all(scan_face in session.scans for scan_face in SCAN_ORDER):
+            session.facelets, session.confidence = classify_samples(
+                {scan_face: session.scans[scan_face].samples for scan_face in FACE_ORDER}
+            )
+    readiness_code, readiness_message = _capture_readiness(processed.quality, acceptable)
     return UploadResponse(
         face=face,
+        acceptable=acceptable,
+        committed=committed,
+        readiness_code=readiness_code,
+        readiness_message=readiness_message,
         samples=[SampleResponse(**asdict(sample)) for sample in processed.samples],
         quality=QualityResponse(**asdict(processed.quality)),
         scans_complete=session.facelets is not None,
         facelets=session.facelets,
         confidence=session.confidence,
     )
+
+
+def _capture_readiness(quality: QualityReport, acceptable: bool) -> tuple[str, str]:
+    if quality.underexposed_fraction > 0.25:
+        return "too_dark", "Add diffuse light and try again."
+    if quality.overexposed_fraction > 0.25 or quality.glare_fraction > 0.15:
+        return "glare", "Reduce reflections or move away from the light."
+    if quality.blur_score < 25:
+        return "blurry", "Hold the cube and camera steady."
+    if not acceptable:
+        return "inconsistent", "Center one face inside the guide and try again."
+    return "ready", "Face quality is suitable."
 
 
 @router.put("/sessions/{session_id}/facelets", response_model=ValidationResponse)

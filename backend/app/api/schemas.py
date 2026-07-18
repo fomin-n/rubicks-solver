@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +17,12 @@ def _camel_case(value: str) -> str:
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=_camel_case)
+
+
+class CommitMode(StrEnum):
+    ALWAYS = "always"
+    IF_ACCEPTABLE = "if_acceptable"
+    NEVER = "never"
 
 
 class ErrorBody(ApiModel):
@@ -56,6 +63,10 @@ class SessionResponse(ApiModel):
 
 class UploadResponse(ApiModel):
     face: Face
+    acceptable: bool
+    committed: bool
+    readiness_code: str
+    readiness_message: str
     samples: list[SampleResponse]
     quality: QualityResponse
     scans_complete: bool

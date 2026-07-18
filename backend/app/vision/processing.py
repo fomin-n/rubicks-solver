@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
@@ -40,15 +42,20 @@ class ProcessedFace:
 def _decode_image(data: bytes) -> np.ndarray:
     if not data:
         raise ImageProcessingError("The uploaded image is empty.")
-    encoded = np.frombuffer(data, dtype=np.uint8)
-    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ImageProcessingError("The uploaded file is not a supported image.")
-    height, width = image.shape[:2]
+    try:
+        with Image.open(BytesIO(data)) as source:
+            width, height = source.size
+            if height * width > MAX_IMAGE_PIXELS:
+                raise ImageProcessingError("The decoded image is too large.")
+            transposed = ImageOps.exif_transpose(source)
+            rgb = transposed.convert("RGB")
+            rgb.load()
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        raise ImageProcessingError("The uploaded file is not a supported image.") from error
+    height, width = rgb.height, rgb.width
     if height < 160 or width < 160:
         raise ImageProcessingError("The image is too small; use at least 160×160 pixels.")
-    if height * width > MAX_IMAGE_PIXELS:
-        raise ImageProcessingError("The decoded image is too large.")
+    image = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2BGR)
     scale = min(1.0, TARGET_SIZE / max(height, width))
     if scale < 1:
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)

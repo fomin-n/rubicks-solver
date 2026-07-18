@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import cv2
 import numpy as np
+from PIL import Image
 
 from app.vision.processing import ImageProcessingError, process_face_image
 
@@ -31,3 +34,20 @@ def test_rejects_invalid_image():
         assert "supported image" in str(error)
     else:
         raise AssertionError("Invalid bytes were accepted")
+
+
+def test_applies_exif_orientation_before_sampling():
+    rgb = np.zeros((400, 400, 3), dtype=np.uint8)
+    rgb[:200, :200] = (230, 30, 30)
+    rgb[:200, 200:] = (30, 230, 30)
+    rgb[200:, :200] = (30, 30, 230)
+    rgb[200:, 200:] = (230, 220, 30)
+    image = Image.fromarray(rgb)
+    exif = image.getexif()
+    exif[274] = 6
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=95, exif=exif)
+
+    previews = [sample.preview_hex for sample in process_face_image(output.getvalue()).samples]
+    red, green, blue = (int(previews[0][offset : offset + 2], 16) for offset in (1, 3, 5))
+    assert red < 50 and green < 50 and blue > 180
