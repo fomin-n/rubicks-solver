@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import cv2
+import numpy as np
+from fastapi.testclient import TestClient
+
+from app.cube.facelets import state_to_facelets
+from app.cube.model import SOLVED_STATE, Color, Face
+from app.cube.moves import MOVE_BY_NOTATION, apply_sequence
+from app.main import app
+
+client = TestClient(app)
+TARGET = {
+    Face.U: Color.WHITE,
+    Face.D: Color.YELLOW,
+    Face.F: Color.GREEN,
+    Face.B: Color.BLUE,
+    Face.R: Color.RED,
+    Face.L: Color.ORANGE,
+}
+
+
+def _session_id() -> str:
+    response = client.post("/api/sessions")
+    assert response.status_code == 201
+    return response.json()["sessionId"]
+
+
+def _png() -> bytes:
+    image = np.full((400, 400, 3), (40, 100, 200), dtype=np.uint8)
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    return encoded.tobytes()
+
+
+def _face_png(colors: list[Color]) -> bytes:
+    bgr = {
+        Color.RED: (45, 45, 215),
+        Color.BLUE: (205, 95, 30),
+        Color.ORANGE: (35, 130, 245),
+        Color.WHITE: (230, 235, 240),
+        Color.GREEN: (70, 165, 35),
+        Color.YELLOW: (35, 220, 240),
+    }
+    image = np.full((600, 600, 3), 18, dtype=np.uint8)
+    for index, color in enumerate(colors):
+        row, column = divmod(index, 2)
+        image[
+            row * 300 + 10 : (row + 1) * 300 - 10, column * 300 + 10 : (column + 1) * 300 - 10
+        ] = bgr[color]
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    return encoded.tobytes()
+
+
+def test_health_session_upload_and_delete():
+    assert client.get("/api/health").json() == {"status": "ok"}
+    session_id = _session_id()
+    upload = client.post(
+        f"/api/sessions/{session_id}/faces/F",
+        files={"image": ("face.png", _png(), "image/png")},
+    )
+    assert upload.status_code == 200
+    assert len(upload.json()["samples"]) == 4
+    state = client.get(f"/api/sessions/{session_id}").json()
+    assert state["scannedFaces"] == ["F"]
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 204
+    missing = client.get(f"/api/sessions/{session_id}")
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "session_not_found"
+
+
+def test_manual_state_validation_and_optimal_solve():
+    session_id = _session_id()
+    scramble = apply_sequence(
+        SOLVED_STATE,
+        [MOVE_BY_NOTATION[name] for name in ("R", "U", "F'", "R2", "U2")],
+    )
+    facelets = state_to_facelets(scramble, TARGET)
+    payload = {
+        "faces": {
+            face.value: [color.value for color in colors] for face, colors in facelets.items()
+        }
+    }
+    update = client.put(f"/api/sessions/{session_id}/facelets", json=payload)
+    assert update.status_code == 200
+    assert update.json()["valid"] is True
+    assert client.post(f"/api/sessions/{session_id}/validate").json()["valid"] is True
+    solved = client.post(f"/api/sessions/{session_id}/solve")
+    assert solved.status_code == 200
+    body = solved.json()
+    assert body["optimal"] is True
+    assert body["metric"] == "HTM"
+    assert body["moveCount"] == len(body["moves"])
+    assert body["moveCount"] > 0
+
+
+def test_six_images_are_balanced_classified_and_validated():
+    session_id = _session_id()
+    scramble = apply_sequence(
+        SOLVED_STATE,
+        [MOVE_BY_NOTATION[name] for name in ("R", "U", "F'", "R2", "U2")],
+    )
+    expected = state_to_facelets(scramble, TARGET)
+    final = None
+    for face in (Face.F, Face.R, Face.B, Face.L, Face.U, Face.D):
+        response = client.post(
+            f"/api/sessions/{session_id}/faces/{face.value}",
+            files={"image": (f"{face.value}.png", _face_png(expected[face]), "image/png")},
+        )
+        assert response.status_code == 200
+        final = response.json()
+    assert final is not None
+    assert final["scansComplete"] is True
+    recognized = final["facelets"]
+    assert sorted(color for stickers in recognized.values() for color in stickers) == sorted(
+        color.value for color in Color for _ in range(4)
+    )
+    assert client.post(f"/api/sessions/{session_id}/validate").json()["valid"] is True
+
+
+def test_invalid_state_and_unknown_session():
+    session_id = _session_id()
+    faces = {face.value: [color.value] * 4 for face, color in TARGET.items()}
+    faces["U"][0] = "red"
+    update = client.put(f"/api/sessions/{session_id}/facelets", json={"faces": faces})
+    assert update.json()["valid"] is False
+    solve = client.post(f"/api/sessions/{session_id}/solve")
+    assert solve.status_code == 409
+    assert solve.json()["code"] == "invalid_cube"
+    assert client.get("/api/sessions/00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+def test_upload_rejects_wrong_type_and_oversize():
+    session_id = _session_id()
+    wrong = client.post(
+        f"/api/sessions/{session_id}/faces/F",
+        files={"image": ("face.txt", b"hello", "text/plain")},
+    )
+    assert wrong.status_code == 415
+    large = client.post(
+        f"/api/sessions/{session_id}/faces/F",
+        files={"image": ("face.png", b"0" * (5 * 1024 * 1024 + 1), "image/png")},
+    )
+    assert large.status_code == 413
