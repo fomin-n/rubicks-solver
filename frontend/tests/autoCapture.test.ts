@@ -7,7 +7,10 @@ import {
 } from "../src/camera/autoCapture";
 
 const ready: CaptureMetrics = {
+  fullCropBrightness: 125,
+  fullCropDarkFraction: 0.08,
   brightness: 130,
+  lowerBrightnessPercentile: 70,
   darkFraction: 0.01,
   glareFraction: 0.01,
   sharpness: 24,
@@ -16,19 +19,63 @@ const ready: CaptureMetrics = {
   boundaryStrength: 30,
   alignmentScore: 0.8,
 };
+const usableLowLight: CaptureMetrics = {
+  ...ready,
+  fullCropBrightness: 34,
+  fullCropDarkFraction: 0.58,
+  brightness: 42,
+  lowerBrightnessPercentile: 26,
+  darkFraction: 0.38,
+};
 
 describe("auto capture state machine", () => {
-  it("requires a stable hold and tolerates one moderate miss", () => {
+  it("captures moderately dark but usable frames with a soft warning", () => {
+    const evaluation = evaluateMetrics(usableLowLight);
+    expect(evaluation).toEqual({ acceptable: true, blockingReason: null, warnings: ["low_light"] });
     let state = { ...INITIAL_AUTO_CAPTURE_STATE };
     let captured = false;
     for (let time = 0; time <= 1_000; time += 100) {
-      const metrics = time === 400 ? { ...ready, brightness: 40 } : ready;
-      const result = advanceAutoCapture(state, metrics, time);
+      const result = advanceAutoCapture(state, usableLowLight, time);
       state = result.state;
       captured ||= result.shouldCapture;
     }
     expect(captured).toBe(true);
     expect(state.phase).toBe("cooldown");
+    expect(state.warnings).toContain("low_light");
+  });
+
+  it("blocks genuinely near-black frames", () => {
+    const extreme = {
+      ...usableLowLight,
+      brightness: 9,
+      lowerBrightnessPercentile: 3,
+      darkFraction: 0.92,
+    };
+    expect(evaluateMetrics(extreme).blockingReason).toBe("too_dark");
+    let state = { ...INITIAL_AUTO_CAPTURE_STATE };
+    for (let time = 0; time <= 1_500; time += 100) state = advanceAutoCapture(state, extreme, time).state;
+    expect(state.status).toBe("too_dark");
+    expect(state.progress).toBe(0);
+    expect(state.countsTowardHold).toBe(false);
+  });
+
+  it("reports motion as the blocker while retaining the low-light warning", () => {
+    const evaluation = evaluateMetrics({ ...usableLowLight, motion: 5 });
+    expect(evaluation.acceptable).toBe(false);
+    expect(evaluation.blockingReason).toBe("hold_steady");
+    expect(evaluation.warnings).toContain("low_light");
+  });
+
+  it("tolerates one unusable fluctuation without restarting the hold", () => {
+    let state = { ...INITIAL_AUTO_CAPTURE_STATE };
+    let captured = false;
+    for (let time = 0; time <= 1_000; time += 100) {
+      const metrics = time === 400 ? { ...ready, sharpness: 2 } : ready;
+      const result = advanceAutoCapture(state, metrics, time);
+      state = result.state;
+      captured ||= result.shouldCapture;
+    }
+    expect(captured).toBe(true);
   });
 
   it("requires cooldown and a changed scene before rearming", () => {
@@ -44,11 +91,10 @@ describe("auto capture state machine", () => {
     expect(result.state.phase).toBe("warming");
   });
 
-  it("returns specific actionable readiness states", () => {
-    expect(evaluateMetrics({ ...ready, brightness: 20 })).toBe("too_dark");
-    expect(evaluateMetrics({ ...ready, glareFraction: 0.2 })).toBe("reduce_glare");
-    expect(evaluateMetrics({ ...ready, sharpness: 2 })).toBe("move_closer");
-    expect(evaluateMetrics({ ...ready, alignmentScore: 0.2 })).toBe("center_cube");
-    expect(evaluateMetrics({ ...ready, motion: 5 })).toBe("hold_steady");
+  it("preserves glare, sharpness, alignment, and motion blockers", () => {
+    expect(evaluateMetrics({ ...ready, glareFraction: 0.2 }).blockingReason).toBe("reduce_glare");
+    expect(evaluateMetrics({ ...ready, sharpness: 2 }).blockingReason).toBe("move_closer");
+    expect(evaluateMetrics({ ...ready, alignmentScore: 0.2 }).blockingReason).toBe("center_cube");
+    expect(evaluateMetrics({ ...ready, motion: 5 }).blockingReason).toBe("hold_steady");
   });
 });

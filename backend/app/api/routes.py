@@ -136,14 +136,18 @@ async def upload_face(
 
 
 def _capture_readiness(quality: QualityReport, acceptable: bool) -> tuple[str, str]:
-    if quality.underexposed_fraction > 0.25:
-        return "too_dark", "Add diffuse light and try again."
-    if quality.overexposed_fraction > 0.25 or quality.glare_fraction > 0.15:
+    if "too_dark" in quality.blocking_reasons:
+        return "too_dark", "The sticker regions are nearly black; add some light and try again."
+    if "glare" in quality.blocking_reasons:
         return "glare", "Reduce reflections or move away from the light."
-    if quality.blur_score < 25:
+    if "blurry" in quality.blocking_reasons:
         return "blurry", "Hold the cube and camera steady."
     if not acceptable:
         return "inconsistent", "Center one face inside the guide and try again."
+    if quality.warnings:
+        if quality.sticker_median_brightness < 55 or quality.underexposed_fraction > 0.25:
+            return "ready_with_warnings", "Low light detected, but sticker colors are usable."
+        return "ready_with_warnings", "The image is usable with minor quality warnings."
     return "ready", "Face quality is suitable."
 
 

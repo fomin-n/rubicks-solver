@@ -25,7 +25,12 @@ const solveSchema = z.object({
 const uploadSchema = z.object({
   acceptable: z.boolean(), committed: z.boolean(), readinessCode: z.string(), readinessMessage: z.string(),
   face, samples: z.array(z.object({ lab: z.array(z.number()), previewHex: z.string(), consistency: z.number(), confidence: z.number().nullable() })),
-  quality: z.object({ blurScore: z.number(), underexposedFraction: z.number(), overexposedFraction: z.number(), glareFraction: z.number(), warnings: z.array(z.string()), retakeRecommended: z.boolean() }),
+  quality: z.object({
+    blurScore: z.number(), underexposedFraction: z.number(),
+    fullImageUnderexposedFraction: z.number(), stickerMedianBrightness: z.number(),
+    overexposedFraction: z.number(), glareFraction: z.number(), warnings: z.array(z.string()),
+    blockingReasons: z.array(z.string()), retakeRecommended: z.boolean(),
+  }),
   scansComplete: z.boolean(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
 });
 

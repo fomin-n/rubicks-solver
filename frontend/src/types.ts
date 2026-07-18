@@ -58,9 +58,12 @@ export interface UploadResponse {
   quality: {
     blurScore: number;
     underexposedFraction: number;
+    fullImageUnderexposedFraction: number;
+    stickerMedianBrightness: number;
     overexposedFraction: number;
     glareFraction: number;
     warnings: string[];
+    blockingReasons: string[];
     retakeRecommended: boolean;
   };
   scansComplete: boolean;

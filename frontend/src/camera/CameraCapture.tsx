@@ -199,6 +199,20 @@ export function CameraCapture(props: Props) {
         event.currentTarget.value = "";
       }} /></label>
     </div>
-    {debugEnabled && metrics && <details className="capture-debug" open><summary>Capture diagnostics</summary><pre>{JSON.stringify({ metrics, machine }, null, 2)}</pre></details>}
+    {debugEnabled && metrics && <details className="capture-debug" open><summary>Capture diagnostics</summary><pre>{JSON.stringify({
+      metrics,
+      thresholds: {
+        warningMinBrightness: AUTO_CAPTURE_CONFIG.warningMinBrightness,
+        hardMinBrightness: AUTO_CAPTURE_CONFIG.hardMinBrightness,
+        warningMaxDarkFraction: AUTO_CAPTURE_CONFIG.warningMaxDarkFraction,
+        hardMaxDarkFraction: AUTO_CAPTURE_CONFIG.hardMaxDarkFraction,
+      },
+      decision: {
+        blockingReason: machine.blockingReason,
+        warnings: machine.warnings,
+        countsTowardHold: machine.countsTowardHold,
+      },
+      machine,
+    }, null, 2)}</pre></details>}
   </div>;
 }

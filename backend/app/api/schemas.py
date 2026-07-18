@@ -45,9 +45,12 @@ class SampleResponse(ApiModel):
 class QualityResponse(ApiModel):
     blur_score: float
     underexposed_fraction: float
+    full_image_underexposed_fraction: float
+    sticker_median_brightness: float
     overexposed_fraction: float
     glare_fraction: float
     warnings: list[str]
+    blocking_reasons: list[str]
     retake_recommended: bool
 
 

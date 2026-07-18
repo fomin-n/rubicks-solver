@@ -37,7 +37,13 @@ test("automatic capture scans six synthetic camera faces", async ({ page, browse
     } });
     Object.defineProperty(navigator, "vibrate", { configurable: true, value: () => true });
     (window as unknown as { __rubiksE2ECamera: object }).__rubiksE2ECamera = {
-      metrics: () => ({ brightness: 130, darkFraction: 0.01, glareFraction: 0.01, sharpness: 24, motion: performance.now() < changedUntil ? 10 : 1, quadrantConsistency: 4, boundaryStrength: 45, alignmentScore: 0.82 }),
+      metrics: () => ({
+        fullCropBrightness: 34, fullCropDarkFraction: 0.58,
+        brightness: 42, lowerBrightnessPercentile: 26, darkFraction: 0.38,
+        glareFraction: 0.01, sharpness: 24,
+        motion: performance.now() < changedUntil ? 10 : 1,
+        quadrantConsistency: 4, boundaryStrength: 45, alignmentScore: 0.82,
+      }),
       captureBlob: () => new Promise<Blob>((resolve) => {
         const output = document.createElement("canvas");
         output.width = 640;
@@ -54,11 +60,12 @@ test("automatic capture scans six synthetic camera faces", async ({ page, browse
     };
   }, { scans: SCANS });
 
-  await page.goto("/");
+  await page.goto("/?captureDebug=1");
   await page.getByRole("button", { name: "Start scanning" }).click();
   await page.getByRole("button", { name: "Allow camera" }).click();
   await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
   await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("F"));
+  await expect(page.getByText("Low light, but usable — hold steady", { exact: true })).toBeVisible({ timeout: 5_000 });
   const syntheticRed = await page.evaluate(async () => {
     const blob = await (window as unknown as { __rubiksE2ECamera: { captureBlob: () => Promise<Blob> } }).__rubiksE2ECamera.captureBlob();
     const bitmap = await createImageBitmap(blob);

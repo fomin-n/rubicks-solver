@@ -33,7 +33,7 @@ def _png() -> bytes:
     return encoded.tobytes()
 
 
-def _face_png(colors: list[Color]) -> bytes:
+def _face_png(colors: list[Color], exposure: float = 1.0) -> bytes:
     bgr = {
         Color.RED: (45, 45, 215),
         Color.BLUE: (205, 95, 30),
@@ -45,9 +45,10 @@ def _face_png(colors: list[Color]) -> bytes:
     image = np.full((600, 600, 3), 18, dtype=np.uint8)
     for index, color in enumerate(colors):
         row, column = divmod(index, 2)
+        adjusted = np.clip(np.asarray(bgr[color]) * exposure, 0, 255).astype(np.uint8)
         image[
             row * 300 + 10 : (row + 1) * 300 - 10, column * 300 + 10 : (column + 1) * 300 - 10
-        ] = bgr[color]
+        ] = adjusted
     ok, encoded = cv2.imencode(".png", image)
     assert ok
     return encoded.tobytes()
@@ -172,3 +173,40 @@ def test_candidate_commit_modes_are_non_destructive():
     assert forced.status_code == 200
     assert forced.json()["committed"] is True
     assert client.get(f"/api/sessions/{session_id}").json()["scannedFaces"] == ["F"]
+
+
+def test_low_light_warning_commits_but_near_black_does_not():
+    colors = [Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW]
+    low_light_session = _session_id()
+    low_light = client.post(
+        f"/api/sessions/{low_light_session}/faces/F?commitMode=if_acceptable",
+        files={"image": ("low-light.png", _face_png(colors, 0.35), "image/png")},
+    )
+    assert low_light.status_code == 200
+    low_light_body = low_light.json()
+    assert low_light_body["acceptable"] is True
+    assert low_light_body["committed"] is True
+    assert low_light_body["readinessCode"] == "ready_with_warnings"
+    assert low_light_body["quality"]["retakeRecommended"] is False
+    assert low_light_body["quality"]["blockingReasons"] == []
+    assert low_light_body["quality"]["stickerMedianBrightness"] < 55
+    assert client.get(f"/api/sessions/{low_light_session}").json()["scannedFaces"] == ["F"]
+
+    dark_session = _session_id()
+    near_black_bytes = _face_png(colors, 0.05)
+    near_black = client.post(
+        f"/api/sessions/{dark_session}/faces/F?commitMode=if_acceptable",
+        files={"image": ("near-black.png", near_black_bytes, "image/png")},
+    )
+    assert near_black.status_code == 200
+    assert near_black.json()["acceptable"] is False
+    assert near_black.json()["committed"] is False
+    assert near_black.json()["readinessCode"] == "too_dark"
+    assert client.get(f"/api/sessions/{dark_session}").json()["scannedFaces"] == []
+
+    forced = client.post(
+        f"/api/sessions/{dark_session}/faces/F?commitMode=always",
+        files={"image": ("near-black.png", near_black_bytes, "image/png")},
+    )
+    assert forced.json()["committed"] is True
+    assert client.get(f"/api/sessions/{dark_session}").json()["scannedFaces"] == ["F"]
