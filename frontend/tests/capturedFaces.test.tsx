@@ -1,0 +1,28 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { CapturedFaces } from "../src/camera/CapturedFaces";
+import type { CapturedFacePreview } from "../src/types";
+
+function preview(face: "F" | "R", provisional = true): CapturedFacePreview {
+  return {
+    face,
+    previewHex: ["#d72d3d", "#2468ce", "#24a665", "#dfc525"],
+    predictedColors: ["red", "blue", "green", "yellow"],
+    confidence: [0.8, 0.7, 0.6, 0.5],
+    provisional,
+    warnings: [],
+    warningCodes: [],
+  };
+}
+
+it("shows four immediate swatches per face and retakes only the selected face", () => {
+  const onRetake = vi.fn();
+  render(<CapturedFaces previews={{ F: preview("F"), R: preview("R", false) }} busy={false} onRetake={onRetake} />);
+  const articles = screen.getAllByRole("article");
+  expect(articles).toHaveLength(2);
+  expect(within(articles[0]).getByLabelText("F recognized sticker preview").children).toHaveLength(4);
+  expect(within(articles[1]).getByText("Final")).toBeInTheDocument();
+  fireEvent.click(within(articles[0]).getByRole("button", { name: "Retake" }));
+  expect(onRetake).toHaveBeenCalledWith("F");
+  expect(articles[0]).toBeInTheDocument();
+  expect(within(articles[1]).getByText("R")).toBeInTheDocument();
+});

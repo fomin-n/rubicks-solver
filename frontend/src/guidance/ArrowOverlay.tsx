@@ -27,11 +27,14 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
       className={`guide-sticker ${face === move.face && !calibration ? "active" : ""}`}
       style={{ "--guide-color": COLOR_HEX[facelets[face][index]] } as CSSProperties}
     />))}
+    {!calibration && <polygon points={pointsAttribute([...FACE_QUADS[move.face]])} className="active-face-wash" data-active-face={move.face} />}
     {faces.map((face) => <polygon key={`${face}-outline`} points={pointsAttribute([...FACE_QUADS[face]])} className={`guide-face-outline ${face === move.face && !calibration ? "active" : ""}`} />)}
-    {!calibration && <>
-      <path data-direction={arrow.direction} data-sweep={arrow.sweepSign} d={arrow.path} className="turn-arrow" markerEnd="url(#arrow-head)" markerStart={arrow.halfTurn ? "url(#arrow-start)" : undefined} />
-      {arrow.halfTurn && <text className="half-turn-label" x="180" y="300">180°</text>}
-    </>}
+    {!calibration && <g className="turn-guidance" data-face={move.face} data-direction={arrow.direction} data-half-turn={arrow.halfTurn}>
+      <path d={arrow.path} className="turn-arrow-outline" />
+      <path d={arrow.path} className="turn-arrow" markerEnd="url(#arrow-head)" markerStart={arrow.halfTurn ? "url(#arrow-start)" : undefined} />
+      <path d={arrow.path} className="turn-arrow-highlight" />
+      {arrow.halfTurn && <g className="half-turn-badge" aria-label="180 degree turn"><rect x="145" y="278" width="70" height="28" rx="14" /><text className="half-turn-label" x="180" y="299">180°</text></g>}
+    </g>}
     {calibration && faces.map((face) => <text key={`${face}-label`} className="guide-face-label" x={face === "F" ? 125 : face === "R" ? 235 : 180} y={face === "U" ? 88 : 190}>{face}</text>)}
     <title>{COLORS.length} physical colors shown from the current cube state</title>
   </svg>;
