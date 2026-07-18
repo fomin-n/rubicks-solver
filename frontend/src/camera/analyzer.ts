@@ -43,8 +43,8 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     boundary += Math.abs(luma[index * side + seam] - luma[index * side + seam - 1]);
     boundary += Math.abs(luma[seam * side + index] - luma[(seam - 1) * side + index]);
   }
-  const sharpness = gradients / Math.max(1, gradientCount);
   const boundaryStrength = boundary / Math.max(1, side * 2);
+  const sharpness = Math.max(gradients / Math.max(1, gradientCount), boundaryStrength * 0.18);
   const quadrantConsistency = quadrantTotals.reduce((sum, value, index) => {
     const mean = value / quadrantCounts[index];
     return sum + Math.sqrt(Math.max(0, quadrantSquares[index] / quadrantCounts[index] - mean * mean));

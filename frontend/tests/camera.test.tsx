@@ -13,17 +13,24 @@ describe("camera controller", () => {
 
   it("falls back from rear constraints and stops tracks on cleanup", async () => {
     const stop = vi.fn();
+    const nextStop = vi.fn();
     const track = { stop, addEventListener: vi.fn(), readyState: "live" };
+    const nextTrack = { stop: nextStop, addEventListener: vi.fn(), readyState: "live" };
     const stream = { getTracks: () => [track], getVideoTracks: () => [track] } as unknown as MediaStream;
+    const nextStream = { getTracks: () => [nextTrack], getVideoTracks: () => [nextTrack] } as unknown as MediaStream;
     const getUserMedia = vi.fn()
       .mockRejectedValueOnce(new DOMException("constraints", "OverconstrainedError"))
-      .mockResolvedValueOnce(stream);
+      .mockResolvedValueOnce(stream)
+      .mockResolvedValueOnce(nextStream);
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia, enumerateDevices: vi.fn().mockResolvedValue([]) } });
     const { result, unmount } = renderHook(() => useCameraController());
     await act(async () => { expect(await result.current.start()).toBe(true); });
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     expect(result.current.stream).toBe(stream);
-    unmount();
+    await act(async () => { expect(await result.current.switchCamera("rear-2")).toBe(true); });
+    expect(getUserMedia).toHaveBeenLastCalledWith({ audio: false, video: { deviceId: { exact: "rear-2" } } });
     expect(stop).toHaveBeenCalledOnce();
+    unmount();
+    expect(nextStop).toHaveBeenCalledOnce();
   });
 });

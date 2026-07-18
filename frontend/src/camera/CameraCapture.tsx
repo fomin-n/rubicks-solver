@@ -26,10 +26,19 @@ interface Props {
 }
 
 const debugEnabled = new URLSearchParams(window.location.search).get("captureDebug") === "1";
+interface E2ECameraBridge {
+  metrics?: () => CaptureMetrics;
+  captureBlob?: () => Promise<Blob>;
+}
+function e2eBridge(): E2ECameraBridge | undefined {
+  return import.meta.env.VITE_E2E === "1" ? (window as unknown as { __rubiksE2ECamera?: E2ECameraBridge }).__rubiksE2ECamera : undefined;
+}
 
 // Exported for exact object-fit ROI tests.
 // eslint-disable-next-line react-refresh/only-export-components
 export async function captureVideoRoi(video: HTMLVideoElement, size = 768): Promise<Blob | null> {
+  const injectedBlob = e2eBridge()?.captureBlob;
+  if (injectedBlob) return await injectedBlob();
   if (!video.videoWidth || !video.videoHeight) return null;
   const bounds = video.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return null;
@@ -77,8 +86,10 @@ export function CameraCapture(props: Props) {
   const [metrics, setMetrics] = useState<CaptureMetrics | null>(null);
 
   useEffect(() => {
-    machineRef.current = resetAutoCapture();
-    previousLumaRef.current = undefined;
+    if (!["cooldown", "scene_change"].includes(machineRef.current.phase)) {
+      machineRef.current = resetAutoCapture();
+      previousLumaRef.current = undefined;
+    }
     capturePendingRef.current = false;
     setMachine(machineRef.current);
   }, [props.captureKey]);
@@ -132,14 +143,17 @@ export function CameraCapture(props: Props) {
       if (cancelled) return;
       if (document.visibilityState === "visible" && !props.busy && now - lastAnalysis >= AUTO_CAPTURE_CONFIG.intervalMs) {
         lastAnalysis = now;
-        const pixels = analysisPixels(video, analysisCanvasRef.current);
-        if (pixels) {
-          const result = analyzePixels(pixels, previousLumaRef.current);
-          previousLumaRef.current = result.luma;
-          const advanced = advanceAutoCapture(machineRef.current, result.metrics, performance.now());
+        const injectedMetrics = e2eBridge()?.metrics?.();
+        const pixels = injectedMetrics ? null : analysisPixels(video, analysisCanvasRef.current);
+        if (injectedMetrics || pixels) {
+          const result = pixels ? analyzePixels(pixels, previousLumaRef.current) : null;
+          const currentMetrics = injectedMetrics ?? result!.metrics;
+          const previousPhase = machineRef.current.phase;
+          const advanced = advanceAutoCapture(machineRef.current, currentMetrics, performance.now());
+          if (result && (!["cooldown", "scene_change"].includes(previousPhase) || advanced.state.phase === "warming")) previousLumaRef.current = result.luma;
           machineRef.current = advanced.state;
           setMachine(advanced.state);
-          setMetrics(result.metrics);
+          setMetrics(currentMetrics);
           if (advanced.shouldCapture) {
             navigator.vibrate?.(60);
             void capture("auto");
@@ -149,7 +163,8 @@ export function CameraCapture(props: Props) {
       schedule();
     };
     const schedule = () => {
-      if ("requestVideoFrameCallback" in video) videoCallback = video.requestVideoFrameCallback(analyze);
+      if (e2eBridge()?.metrics) timer = window.setTimeout(() => analyze(performance.now()), AUTO_CAPTURE_CONFIG.intervalMs);
+      else if ("requestVideoFrameCallback" in video) videoCallback = video.requestVideoFrameCallback(analyze);
       else timer = window.setTimeout(() => analyze(performance.now()), AUTO_CAPTURE_CONFIG.intervalMs);
     };
     schedule();

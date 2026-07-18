@@ -61,6 +61,5 @@ jobs:
       - run: uv sync --project backend --locked
       - run: npm ci --prefix frontend
       - run: make solver-table
-      - run: npx --prefix frontend playwright install --with-deps chromium
+      - run: npx --prefix frontend playwright install --with-deps chromium webkit
       - run: make test-e2e
-
