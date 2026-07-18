@@ -250,7 +250,7 @@ export function advanceAutoCapture(
         }
       : {
           phase: "holding", history, motionHistory, smoothedMotion, holdStartedAt, capturedAt: null, status,
-          blockingReason: null, warnings: evaluation.warnings, countsTowardHold: true, progress,
+          sceneChangedSinceCapture: false, blockingReason: null, warnings: evaluation.warnings, countsTowardHold: true, progress,
         },
     shouldCapture,
   };
