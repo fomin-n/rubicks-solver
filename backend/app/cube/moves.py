@@ -17,12 +17,13 @@ class Move:
 
     @property
     def description(self) -> str:
+        face_name = {Face.U: "up", Face.R: "right", Face.F: "front"}[self.face]
         direction = (
             "180 degrees"
             if abs(self.quarter_turns) == 2
             else ("clockwise" if self.clockwise else "counterclockwise")
         )
-        return f"Turn the {self.face.name.lower()} face {direction}"
+        return f"Turn the {face_name} face {direction}"
 
     @property
     def inverse(self) -> Move:

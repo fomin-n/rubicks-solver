@@ -5,9 +5,10 @@ function notation(face: string, turns: number): string { return turns === 2 || t
 export function inverseMove(move: CubeMove, resultingFacelets: Facelets): CubeMove {
   const turns = Math.abs(move.quarterTurns) === 2 ? 2 : -move.quarterTurns;
   const direction = Math.abs(turns) === 2 ? "half" : turns > 0 ? "clockwise" : "counterclockwise";
+  const faceName = { U: "up", R: "right", F: "front" }[move.face];
   return {
     ...move, notation: notation(move.face, turns), quarterTurns: turns, clockwise: turns > 0,
-    description: `Turn the ${move.face.toLowerCase()} face ${direction === "half" ? "180 degrees" : direction}`,
+    description: `Turn the ${faceName} face ${direction === "half" ? "180 degrees" : direction}`,
     overlay: { ...move.overlay, direction }, resultingFacelets,
   };
 }
@@ -15,4 +16,3 @@ export function inverseMove(move: CubeMove, resultingFacelets: Facelets): CubeMo
 export function faceletsBeforeMove(moves: CubeMove[], initial: Facelets, index: number): Facelets {
   return index === 0 ? initial : moves[index - 1].resultingFacelets;
 }
-
