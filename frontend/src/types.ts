@@ -50,6 +50,10 @@ export interface SolveResponse {
 
 export interface UploadResponse {
   face: Face;
+  acceptable: boolean;
+  committed: boolean;
+  readinessCode: string;
+  readinessMessage: string;
   samples: { lab: number[]; previewHex: string; consistency: number; confidence: number | null }[];
   quality: {
     blurScore: number;
@@ -64,3 +68,4 @@ export interface UploadResponse {
   confidence: Record<Face, number[]> | null;
 }
 
+export type CaptureCommitMode = "always" | "if_acceptable" | "never";

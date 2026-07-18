@@ -113,6 +113,20 @@ def state_to_facelets(state: CubeState, target_colors: dict[Face, Color]) -> Fac
     }
 
 
+def state_to_facelet_labels(state: CubeState) -> dict[Face, list[str]]:
+    """Return the original sticker identity at every destination facelet."""
+    result = {face: [f"{face.value}{index}" for index in range(4)] for face in FACE_ORDER}
+    for position, keys in enumerate(CORNER_FACELETS):
+        cubie = state.corner_permutation[position]
+        twist = state.corner_orientation[position]
+        source_keys = CORNER_FACELETS[cubie]
+        for sticker_index, source_key in enumerate(source_keys):
+            target_face, target_index = keys[(sticker_index + twist) % 3]
+            source_face, source_index = source_key
+            result[target_face][target_index] = f"{source_face.value}{source_index}"
+    return result
+
+
 def solved_facelets(target_colors: dict[Face, Color]) -> FaceletMap:
     return {face: [target_colors[face]] * 4 for face in FACE_ORDER}
 

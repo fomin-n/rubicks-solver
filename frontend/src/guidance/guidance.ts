@@ -16,3 +16,7 @@ export function inverseMove(move: CubeMove, resultingFacelets: Facelets): CubeMo
 export function faceletsBeforeMove(moves: CubeMove[], initial: Facelets, index: number): Facelets {
   return index === 0 ? initial : moves[index - 1].resultingFacelets;
 }
+
+export function faceletsAtProgress(moves: CubeMove[], initial: Facelets, completed: number): Facelets {
+  return completed <= 0 ? initial : moves[Math.min(completed, moves.length) - 1].resultingFacelets;
+}

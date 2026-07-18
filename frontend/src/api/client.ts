@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COLORS, FACES, type Face, type Facelets, type SessionResponse, type SolveResponse, type UploadResponse, type ValidationResponse } from "../types";
+import { COLORS, FACES, type CaptureCommitMode, type Face, type Facelets, type SessionResponse, type SolveResponse, type UploadResponse, type ValidationResponse } from "../types";
 
 const color = z.enum(COLORS);
 const face = z.enum(FACES);
@@ -23,6 +23,7 @@ const solveSchema = z.object({
   targetFaceColors: z.record(face, color), moves: z.array(moveSchema),
 });
 const uploadSchema = z.object({
+  acceptable: z.boolean(), committed: z.boolean(), readinessCode: z.string(), readinessMessage: z.string(),
   face, samples: z.array(z.object({ lab: z.array(z.number()), previewHex: z.string(), consistency: z.number(), confidence: z.number().nullable() })),
   quality: z.object({ blurScore: z.number(), underexposedFraction: z.number(), overexposedFraction: z.number(), glareFraction: z.number(), warnings: z.array(z.string()), retakeRecommended: z.boolean() }),
   scansComplete: z.boolean(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
@@ -46,12 +47,11 @@ async function request<T>(url: string, init: RequestInit, schema: z.ZodType<T>):
 export const api = {
   createSession: () => request("/api/sessions", { method: "POST" }, sessionSchema) as Promise<SessionResponse>,
   deleteSession: (id: string) => request(`/api/sessions/${id}`, { method: "DELETE" }, z.undefined()),
-  uploadFace: async (id: string, selectedFace: Face, blob: Blob) => {
+  uploadFace: async (id: string, selectedFace: Face, blob: Blob, commitMode: CaptureCommitMode = "always") => {
     const data = new FormData(); data.append("image", blob, `${selectedFace}.jpg`);
-    return request(`/api/sessions/${id}/faces/${selectedFace}`, { method: "POST", body: data }, uploadSchema) as Promise<UploadResponse>;
+    return request(`/api/sessions/${id}/faces/${selectedFace}?commitMode=${commitMode}`, { method: "POST", body: data }, uploadSchema) as Promise<UploadResponse>;
   },
   updateFacelets: (id: string, faces: Facelets) => request(`/api/sessions/${id}/facelets`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ faces }) }, validationSchema) as Promise<ValidationResponse>,
   validate: (id: string) => request(`/api/sessions/${id}/validate`, { method: "POST" }, validationSchema) as Promise<ValidationResponse>,
   solve: (id: string) => request(`/api/sessions/${id}/solve`, { method: "POST" }, solveSchema) as Promise<SolveResponse>,
 };
-
