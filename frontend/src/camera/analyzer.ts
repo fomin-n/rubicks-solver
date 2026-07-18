@@ -6,6 +6,8 @@ export interface FrameAnalysis {
 }
 
 export const STICKER_ROI_MARGIN = 0.2;
+const MOTION_BLOCK_SIZE = 6;
+const MOTION_NOISE_FLOOR = 2;
 
 function histogramPercentile(histogram: Uint32Array, count: number, percentile: number): number {
   const target = Math.max(0, Math.ceil(count * percentile) - 1);
@@ -26,7 +28,6 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
   let stickerDark = 0;
   let stickerGlare = 0;
   let stickerCount = 0;
-  let motion = 0;
   let gradients = 0;
   let gradientCount = 0;
   const quadrantTotals = [0, 0, 0, 0];
@@ -43,7 +44,6 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     luma[pixel] = value;
     fullTotal += value;
     if (value < 25) fullDark += 1;
-    if (previous?.length === pixelCount) motion += Math.abs(value - previous[pixel]);
     const row = Math.floor(pixel / side);
     const column = pixel % side;
     const quadrant = (row >= side / 2 ? 2 : 0) + (column >= side / 2 ? 1 : 0);
@@ -63,6 +63,30 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     }
     if (column > 0) { gradients += Math.abs(value - luma[pixel - 1]); gradientCount += 1; }
     if (row > 0) { gradients += Math.abs(value - luma[pixel - side]); gradientCount += 1; }
+  }
+
+  const motionSide = Math.floor(side / MOTION_BLOCK_SIZE);
+  const motionLuma = new Uint8Array(motionSide * motionSide);
+  for (let blockRow = 0; blockRow < motionSide; blockRow += 1) {
+    for (let blockColumn = 0; blockColumn < motionSide; blockColumn += 1) {
+      let blockTotal = 0;
+      for (let row = 0; row < MOTION_BLOCK_SIZE; row += 1) {
+        for (let column = 0; column < MOTION_BLOCK_SIZE; column += 1) {
+          const y = blockRow * MOTION_BLOCK_SIZE + row;
+          const x = blockColumn * MOTION_BLOCK_SIZE + column;
+          blockTotal += luma[y * side + x];
+        }
+      }
+      motionLuma[blockRow * motionSide + blockColumn] = Math.round(
+        blockTotal / (MOTION_BLOCK_SIZE * MOTION_BLOCK_SIZE),
+      );
+    }
+  }
+  let motion = 0;
+  if (previous?.length === motionLuma.length) {
+    for (let index = 0; index < motionLuma.length; index += 1) {
+      motion += Math.max(0, Math.abs(motionLuma[index] - previous[index]) - MOTION_NOISE_FLOOR);
+    }
   }
 
   const seam = Math.floor(side / 2);
@@ -85,7 +109,7 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
   }, 0) / 4;
   const alignmentScore = Math.max(0, Math.min(1, 0.58 + boundaryStrength / 100 - quadrantConsistency / 220));
   return {
-    luma,
+    luma: motionLuma,
     metrics: {
       fullCropBrightness: fullTotal / pixelCount,
       fullCropDarkFraction: fullDark / pixelCount,
@@ -94,7 +118,7 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
       darkFraction: stickerDark / Math.max(1, stickerCount),
       glareFraction: stickerGlare / Math.max(1, stickerCount),
       sharpness,
-      motion: previous?.length === pixelCount ? motion / pixelCount : AUTO_CAPTURE_CONFIG.sceneChangeMotion,
+      motion: previous?.length === motionLuma.length ? motion / motionLuma.length : AUTO_CAPTURE_CONFIG.sceneChangeMotion,
       quadrantConsistency,
       boundaryStrength,
       alignmentScore,
