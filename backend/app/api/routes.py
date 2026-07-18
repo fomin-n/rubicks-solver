@@ -13,15 +13,17 @@ from app.cube.moves import apply_move
 from app.cube.solver import get_solver
 from app.cube.validation import validate_facelets
 from app.sessions.store import Session, store
-from app.vision.colors import classify_samples
+from app.vision.colors import classify_provisional, classify_samples
 from app.vision.processing import (
     MAX_UPLOAD_BYTES,
     ImageProcessingError,
+    ProcessedFace,
     QualityReport,
     process_face_image,
 )
 
 from .schemas import (
+    CapturedFacePreviewResponse,
     CommitMode,
     FaceletsPayload,
     HealthResponse,
@@ -67,7 +69,39 @@ def _session_response(session: Session) -> SessionResponse:
         expires_at=session.expires_at,
         facelets=session.facelets,
         confidence=session.confidence,
+        captured_faces=_captured_previews(session),
     )
+
+
+def _face_preview(
+    face: Face,
+    processed: ProcessedFace,
+    final_colors: list[Color] | None = None,
+    final_confidence: list[float] | None = None,
+) -> CapturedFacePreviewResponse:
+    samples = processed.samples
+    predicted, confidence = classify_provisional(samples)
+    return CapturedFacePreviewResponse(
+        face=face,
+        preview_hex=[sample.preview_hex for sample in samples],
+        predicted_colors=final_colors or predicted,
+        confidence=final_confidence or confidence,
+        provisional=final_colors is None,
+        warnings=list(processed.quality.warnings),
+        warning_codes=list(processed.quality.warning_codes),
+    )
+
+
+def _captured_previews(session: Session) -> dict[Face, CapturedFacePreviewResponse]:
+    return {
+        face: _face_preview(
+            face,
+            processed,
+            session.facelets[face] if session.facelets else None,
+            session.confidence[face] if session.confidence else None,
+        )
+        for face, processed in session.scans.items()
+    }
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -121,6 +155,7 @@ async def upload_face(
                 {scan_face: session.scans[scan_face].samples for scan_face in FACE_ORDER}
             )
     readiness_code, readiness_message = _capture_readiness(processed.quality, acceptable)
+    previews = _captured_previews(session)
     return UploadResponse(
         face=face,
         acceptable=acceptable,
@@ -132,6 +167,8 @@ async def upload_face(
         scans_complete=session.facelets is not None,
         facelets=session.facelets,
         confidence=session.confidence,
+        preview=previews.get(face, _face_preview(face, processed)),
+        captured_faces=previews,
     )
 
 
@@ -144,8 +181,8 @@ def _capture_readiness(quality: QualityReport, acceptable: bool) -> tuple[str, s
         return "blurry", "Hold the cube and camera steady."
     if not acceptable:
         return "inconsistent", "Center one face inside the guide and try again."
-    if quality.warnings:
-        if quality.sticker_median_brightness < 55 or quality.underexposed_fraction > 0.25:
+    if quality.warning_codes:
+        if "low_light" in quality.warning_codes:
             return "ready_with_warnings", "Low light detected, but sticker colors are usable."
         return "ready_with_warnings", "The image is usable with minor quality warnings."
     return "ready", "Face quality is suitable."

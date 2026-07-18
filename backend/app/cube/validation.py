@@ -12,6 +12,7 @@ class ValidationIssue:
     code: str
     message: str
     face: Face | None = None
+    faces: tuple[Face, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,7 @@ def _structural_errors(facelets: FaceletMap) -> list[ValidationIssue]:
                     "wrong_facelet_count",
                     f"Face {face.value} has {len(facelets[face])} facelets; expected 4.",
                     face,
+                    (face,),
                 )
             )
     if errors:
@@ -68,12 +70,17 @@ def _corner_errors(facelets: FaceletMap) -> list[ValidationIssue]:
         frozenset((Color.GREEN, Color.BLUE)),
     )
     for position, keys in enumerate(CORNER_FACELETS):
+        corner_faces = tuple(face for face, _ in keys)
         colors = [facelets[face][index] for face, index in keys]
         color_set = frozenset(colors)
         seen[color_set] += 1
         if len(color_set) != 3:
             errors.append(
-                ValidationIssue("repeated_corner_color", f"Corner {position + 1} repeats a color.")
+                ValidationIssue(
+                    "repeated_corner_color",
+                    f"Corner {position + 1} repeats a color.",
+                    faces=corner_faces,
+                )
             )
         for pair in opposite_pairs:
             if pair <= color_set:
@@ -83,6 +90,7 @@ def _corner_errors(facelets: FaceletMap) -> list[ValidationIssue]:
                         "opposite_corner_colors",
                         f"Corner {position + 1} contains both {first} and {second}; "
                         "they are opposite colors.",
+                        faces=corner_faces,
                     )
                 )
     duplicates = [colors for colors, count in seen.items() if count > 1]

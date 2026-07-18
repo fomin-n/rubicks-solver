@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.cube.model import Color, Face
 
@@ -44,14 +44,26 @@ class SampleResponse(ApiModel):
 
 class QualityResponse(ApiModel):
     blur_score: float
+    boundary_score: float
     underexposed_fraction: float
     full_image_underexposed_fraction: float
     sticker_median_brightness: float
     overexposed_fraction: float
     glare_fraction: float
     warnings: list[str]
+    warning_codes: list[str]
     blocking_reasons: list[str]
     retake_recommended: bool
+
+
+class CapturedFacePreviewResponse(ApiModel):
+    face: Face
+    preview_hex: list[str]
+    predicted_colors: list[Color | None]
+    confidence: list[float]
+    provisional: bool
+    warnings: list[str]
+    warning_codes: list[str]
 
 
 class SessionResponse(ApiModel):
@@ -62,6 +74,7 @@ class SessionResponse(ApiModel):
     expires_at: datetime
     facelets: dict[Face, list[Color]] | None = None
     confidence: dict[Face, list[float]] | None = None
+    captured_faces: dict[Face, CapturedFacePreviewResponse]
 
 
 class UploadResponse(ApiModel):
@@ -75,12 +88,15 @@ class UploadResponse(ApiModel):
     scans_complete: bool
     facelets: dict[Face, list[Color]] | None = None
     confidence: dict[Face, list[float]] | None = None
+    preview: CapturedFacePreviewResponse
+    captured_faces: dict[Face, CapturedFacePreviewResponse]
 
 
 class ValidationIssueResponse(ApiModel):
     code: str
     message: str
     face: Face | None = None
+    faces: list[Face] = Field(default_factory=list)
 
 
 class RotationSuggestionResponse(ApiModel):

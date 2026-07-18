@@ -28,6 +28,28 @@ REFERENCE_LAB = {
 }
 
 
+def classify_provisional(
+    samples: tuple[StickerSample, StickerSample, StickerSample, StickerSample],
+) -> tuple[list[Color], list[float]]:
+    """Label one captured face for immediate feedback; global balancing remains authoritative."""
+    colors = tuple(Color)
+    references = np.array([REFERENCE_LAB[color] for color in colors])
+    values = np.array([sample.lab for sample in samples], dtype=float)
+    distances = np.linalg.norm(values[:, None, :] - references[None, :, :], axis=2)
+    labels: list[Color] = []
+    confidence: list[float] = []
+    for index, sample in enumerate(samples):
+        order = np.argsort(distances[index])
+        labels.append(colors[int(order[0])])
+        margin = float(
+            (distances[index, order[1]] - distances[index, order[0]])
+            / max(distances[index, order[1]], 1.0)
+        )
+        consistency_penalty = min(0.5, sample.consistency / 50)
+        confidence.append(round(max(0.0, min(1.0, margin - consistency_penalty)), 3))
+    return labels, confidence
+
+
 def _balanced_clusters(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     model = KMeans(n_clusters=6, random_state=42, n_init=20).fit(values)
     centroids = model.cluster_centers_

@@ -10,6 +10,7 @@ import {
   type CaptureMetrics,
 } from "./autoCapture";
 import type { CameraProblem } from "./useCameraController";
+import type { CaptureSource } from "./capturePolicy";
 
 interface Props {
   stream: MediaStream | null;
@@ -19,7 +20,7 @@ interface Props {
   captureKey: string;
   autoEnabled: boolean;
   onAutoChange: (enabled: boolean) => void;
-  onCapture: (blob: Blob, source: "auto" | "manual" | "upload") => void;
+  onCapture: (blob: Blob, source: CaptureSource) => void;
   onSwitchCamera: (deviceId: string) => void;
   onRecover: () => void;
   onPlaybackProblem: (message: string) => void;

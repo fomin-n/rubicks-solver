@@ -36,6 +36,14 @@ def _face_with_dark_borders() -> bytes:
     return encoded.tobytes()
 
 
+def _blurred_face(kernel: int) -> bytes:
+    source = cv2.imdecode(np.frombuffer(_face_image(), dtype=np.uint8), cv2.IMREAD_COLOR)
+    image = cv2.GaussianBlur(source, (kernel, kernel), 0)
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    return encoded.tobytes()
+
+
 def test_samples_four_regions():
     processed = process_face_image(_face_image())
     assert len(processed.samples) == 4
@@ -65,6 +73,19 @@ def test_dark_outer_pixels_do_not_override_usable_sticker_regions():
     assert processed.quality.full_image_underexposed_fraction > 0.5
     assert processed.quality.underexposed_fraction < 0.05
     assert "too_dark" not in processed.quality.blocking_reasons
+
+
+def test_moderate_softness_warns_without_blocking_recognition():
+    processed = process_face_image(_blurred_face(31))
+    assert len(processed.samples) == 4
+    assert "blurry" not in processed.quality.blocking_reasons
+    assert processed.quality.retake_recommended is False
+
+
+def test_structured_quality_codes_are_deduplicated():
+    processed = process_face_image(_face_image(0.35))
+    assert len(processed.quality.warning_codes) == len(set(processed.quality.warning_codes))
+    assert "low_light" in processed.quality.warning_codes
 
 
 def test_rejects_invalid_image():

@@ -14,12 +14,24 @@ export interface SessionResponse {
   expiresAt: string;
   facelets: Facelets | null;
   confidence: Record<Face, number[]> | null;
+  capturedFaces: Partial<Record<Face, CapturedFacePreview>>;
+}
+
+export interface CapturedFacePreview {
+  face: Face;
+  previewHex: string[];
+  predictedColors: (CubeColor | null)[];
+  confidence: number[];
+  provisional: boolean;
+  warnings: string[];
+  warningCodes: string[];
 }
 
 export interface ValidationIssue {
   code: string;
   message: string;
   face: Face | null;
+  faces: Face[];
 }
 
 export interface ValidationResponse {
@@ -57,18 +69,22 @@ export interface UploadResponse {
   samples: { lab: number[]; previewHex: string; consistency: number; confidence: number | null }[];
   quality: {
     blurScore: number;
+    boundaryScore: number;
     underexposedFraction: number;
     fullImageUnderexposedFraction: number;
     stickerMedianBrightness: number;
     overexposedFraction: number;
     glareFraction: number;
     warnings: string[];
+    warningCodes: string[];
     blockingReasons: string[];
     retakeRecommended: boolean;
   };
   scansComplete: boolean;
   facelets: Facelets | null;
   confidence: Record<Face, number[]> | null;
+  preview: CapturedFacePreview;
+  capturedFaces: Partial<Record<Face, CapturedFacePreview>>;
 }
 
 export type CaptureCommitMode = "always" | "if_acceptable" | "never";

@@ -31,12 +31,14 @@ class StickerSample:
 @dataclass(frozen=True, slots=True)
 class QualityReport:
     blur_score: float
+    boundary_score: float
     underexposed_fraction: float
     full_image_underexposed_fraction: float
     sticker_median_brightness: float
     overexposed_fraction: float
     glare_fraction: float
     warnings: tuple[str, ...]
+    warning_codes: tuple[str, ...]
     blocking_reasons: tuple[str, ...]
     retake_recommended: bool
 
@@ -115,29 +117,52 @@ def process_face_image(data: bytes) -> ProcessedFace:
     sticker_median_brightness = float(np.median(sticker_gray))
     exposure_scale = max(1.0, min(4.0, 100.0 / max(sticker_median_brightness, 22.0)))
     blur_score = raw_blur_score * exposure_scale**2
+    seam = TARGET_SIZE // 2
+    boundary_score = float(
+        (
+            np.mean(np.abs(gray[:, seam + 2].astype(float) - gray[:, seam - 2].astype(float)))
+            + np.mean(np.abs(gray[seam + 2].astype(float) - gray[seam - 2].astype(float)))
+        )
+        / 2
+        * exposure_scale
+    )
     overexposed = float(np.mean(sticker_gray > 242))
     glare = float(np.mean(np.max(sticker_pixels, axis=1) > 250))
     samples = tuple(_sample_patch(image, row, column) for row in range(2) for column in range(2))
     spread = max(sample.consistency for sample in samples)
+    sample_values = np.array([sample.lab for sample in samples])
+    sample_separation = float(
+        max(
+            np.linalg.norm(sample_values[left] - sample_values[right])
+            for left in range(4)
+            for right in range(left + 1, 4)
+        )
+    )
 
     warnings: list[str] = []
+    warning_codes: list[str] = []
     blocking_reasons: list[str] = []
-    if blur_score < 50:
-        warnings.append("The face looks blurry. Hold the cube and camera steady.")
-        if blur_score < 25:
+    if blur_score < 35:
+        warning_codes.append("soft_focus")
+        warnings.append("The face is slightly soft, but its sticker samples remain usable.")
+        if blur_score < 8 and boundary_score < 2 and (spread > 28 or sample_separation < 3):
             blocking_reasons.append("blurry")
     if sticker_median_brightness < EXTREME_DARK_MEDIAN or underexposed > EXTREME_DARK_FRACTION:
+        warning_codes.append("too_dark")
         warnings.append("The sticker regions are too dark to identify reliably.")
         blocking_reasons.append("too_dark")
     elif (
         sticker_median_brightness < LOW_LIGHT_WARNING_MEDIAN
         or underexposed > LOW_LIGHT_WARNING_DARK_FRACTION
     ):
+        warning_codes.append("low_light")
         warnings.append("Lighting is lower than recommended, but sticker colors remain usable.")
     if overexposed > 0.25 or glare > 0.15:
+        warning_codes.append("glare")
         warnings.append("Strong glare or overexposure may hide sticker colors.")
         blocking_reasons.append("glare")
     if spread > 18:
+        warning_codes.append("inconsistent")
         warnings.append("A sticker region has inconsistent color; check alignment and reflections.")
         if spread > 28:
             blocking_reasons.append("inconsistent")
@@ -145,12 +170,14 @@ def process_face_image(data: bytes) -> ProcessedFace:
         samples,
         QualityReport(
             blur_score,
+            boundary_score,
             underexposed,
             full_image_underexposed,
             sticker_median_brightness,
             overexposed,
             glare,
             tuple(warnings),
+            tuple(warning_codes),
             tuple(blocking_reasons),
             bool(blocking_reasons),
         ),

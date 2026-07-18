@@ -3,6 +3,7 @@ import { api, ApiClientError } from "../src/api/client";
 const validSession = {
   sessionId: "123e4567-e89b-12d3-a456-426614174000", scanOrder: ["F", "R", "B", "L", "U", "D"],
   scannedFaces: [], nextFace: "F", expiresAt: "2026-07-18T12:00:00Z", facelets: null, confidence: null,
+  capturedFaces: {},
 };
 
 afterEach(() => vi.unstubAllGlobals());

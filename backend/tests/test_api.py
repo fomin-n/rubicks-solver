@@ -62,9 +62,13 @@ def test_health_session_upload_and_delete():
         files={"image": ("face.png", _png(), "image/png")},
     )
     assert upload.status_code == 200
-    assert len(upload.json()["samples"]) == 4
+    upload_body = upload.json()
+    assert len(upload_body["samples"]) == 4
+    assert len(upload_body["preview"]["previewHex"]) == 4
+    assert upload_body["preview"]["provisional"] is True
     state = client.get(f"/api/sessions/{session_id}").json()
     assert state["scannedFaces"] == ["F"]
+    assert len(state["capturedFaces"]["F"]["previewHex"]) == 4
     assert client.delete(f"/api/sessions/{session_id}").status_code == 204
     missing = client.get(f"/api/sessions/{session_id}")
     assert missing.status_code == 404
@@ -113,6 +117,7 @@ def test_six_images_are_balanced_classified_and_validated():
         final = response.json()
     assert final is not None
     assert final["scansComplete"] is True
+    assert all(not preview["provisional"] for preview in final["capturedFaces"].values())
     recognized = final["facelets"]
     assert sorted(color for stickers in recognized.values() for color in stickers) == sorted(
         color.value for color in Color for _ in range(4)
@@ -210,3 +215,43 @@ def test_low_light_warning_commits_but_near_black_does_not():
     )
     assert forced.json()["committed"] is True
     assert client.get(f"/api/sessions/{dark_session}").json()["scannedFaces"] == ["F"]
+
+
+def test_replacing_one_face_preserves_other_previews():
+    session_id = _session_id()
+    first = client.post(
+        f"/api/sessions/{session_id}/faces/F?commitMode=always",
+        files={
+            "image": (
+                "F.png",
+                _face_png([Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW]),
+                "image/png",
+            )
+        },
+    ).json()
+    second = client.post(
+        f"/api/sessions/{session_id}/faces/R?commitMode=always",
+        files={
+            "image": (
+                "R.png",
+                _face_png([Color.ORANGE, Color.WHITE, Color.BLUE, Color.GREEN]),
+                "image/png",
+            )
+        },
+    ).json()
+    right_before = second["capturedFaces"]["R"]
+    replacement = client.post(
+        f"/api/sessions/{session_id}/faces/F?commitMode=always",
+        files={
+            "image": (
+                "F-new.png",
+                _face_png([Color.YELLOW, Color.GREEN, Color.BLUE, Color.RED]),
+                "image/png",
+            )
+        },
+    ).json()
+    assert replacement["capturedFaces"]["R"] == right_before
+    assert (
+        replacement["capturedFaces"]["F"]["previewHex"] != first["capturedFaces"]["F"]["previewHex"]
+    )
+    assert set(client.get(f"/api/sessions/{session_id}").json()["scannedFaces"]) == {"F", "R"}

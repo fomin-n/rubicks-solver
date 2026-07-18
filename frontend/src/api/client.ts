@@ -4,13 +4,19 @@ import { COLORS, FACES, type CaptureCommitMode, type Face, type Facelets, type S
 const color = z.enum(COLORS);
 const face = z.enum(FACES);
 const facelets = z.record(face, z.array(color).length(4));
+const capturedFace = z.object({
+  face, previewHex: z.array(z.string()).length(4), predictedColors: z.array(color.nullable()).length(4),
+  confidence: z.array(z.number()).length(4), provisional: z.boolean(), warnings: z.array(z.string()),
+  warningCodes: z.array(z.string()),
+});
 const sessionSchema = z.object({
   sessionId: z.string().uuid(), scanOrder: z.array(face), scannedFaces: z.array(face), nextFace: face.nullable(),
   expiresAt: z.string(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
+  capturedFaces: z.partialRecord(face, capturedFace),
 });
 const validationSchema = z.object({
   valid: z.boolean(), colorCounts: z.record(color, z.number()),
-  errors: z.array(z.object({ code: z.string(), message: z.string(), face: face.nullable() })),
+  errors: z.array(z.object({ code: z.string(), message: z.string(), face: face.nullable(), faces: z.array(face) })),
   suggestions: z.array(z.object({ face, quarterTurns: z.number(), message: z.string() })),
 });
 const moveSchema = z.object({
@@ -26,12 +32,14 @@ const uploadSchema = z.object({
   acceptable: z.boolean(), committed: z.boolean(), readinessCode: z.string(), readinessMessage: z.string(),
   face, samples: z.array(z.object({ lab: z.array(z.number()), previewHex: z.string(), consistency: z.number(), confidence: z.number().nullable() })),
   quality: z.object({
-    blurScore: z.number(), underexposedFraction: z.number(),
+    blurScore: z.number(), boundaryScore: z.number(), underexposedFraction: z.number(),
     fullImageUnderexposedFraction: z.number(), stickerMedianBrightness: z.number(),
     overexposedFraction: z.number(), glareFraction: z.number(), warnings: z.array(z.string()),
+    warningCodes: z.array(z.string()),
     blockingReasons: z.array(z.string()), retakeRecommended: z.boolean(),
   }),
   scansComplete: z.boolean(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
+  preview: capturedFace, capturedFaces: z.partialRecord(face, capturedFace),
 });
 
 export class ApiClientError extends Error {
