@@ -61,6 +61,7 @@ export interface AutoCaptureState {
   smoothedMotion: number;
   holdStartedAt: number | null;
   capturedAt: number | null;
+  sceneChangedSinceCapture: boolean;
   status: ReadinessCode;
   blockingReason: ReadinessCode | null;
   warnings: ReadinessCode[];
@@ -86,6 +87,7 @@ export const INITIAL_AUTO_CAPTURE_STATE: AutoCaptureState = {
   smoothedMotion: 0,
   holdStartedAt: null,
   capturedAt: null,
+  sceneChangedSinceCapture: false,
   status: "warming_up",
   blockingReason: null,
   warnings: [],
@@ -164,7 +166,12 @@ export function advanceAutoCapture(
   now: number,
 ): AutoCaptureResult {
   if (state.phase === "cooldown") {
+    const sceneChangedSinceCapture = state.sceneChangedSinceCapture
+      || metrics.motion >= AUTO_CAPTURE_CONFIG.sceneChangeMotion;
     if (state.capturedAt !== null && now - state.capturedAt >= AUTO_CAPTURE_CONFIG.cooldownMs) {
+      if (sceneChangedSinceCapture) {
+        return { state: { ...INITIAL_AUTO_CAPTURE_STATE }, shouldCapture: false };
+      }
       return {
         state: {
           ...state,
@@ -174,11 +181,12 @@ export function advanceAutoCapture(
           warnings: [],
           countsTowardHold: false,
           progress: 0,
+          sceneChangedSinceCapture: false,
         },
         shouldCapture: false,
       };
     }
-    return { state, shouldCapture: false };
+    return { state: { ...state, sceneChangedSinceCapture }, shouldCapture: false };
   }
   if (state.phase === "scene_change") {
     if (metrics.motion >= AUTO_CAPTURE_CONFIG.sceneChangeMotion) {
@@ -238,7 +246,7 @@ export function advanceAutoCapture(
     state: shouldCapture
       ? {
           phase: "cooldown", history, motionHistory, smoothedMotion, holdStartedAt, capturedAt: now, status: "capturing",
-          blockingReason: null, warnings: evaluation.warnings, countsTowardHold: true, progress: 1,
+          sceneChangedSinceCapture: false, blockingReason: null, warnings: evaluation.warnings, countsTowardHold: true, progress: 1,
         }
       : {
           phase: "holding", history, motionHistory, smoothedMotion, holdStartedAt, capturedAt: null, status,

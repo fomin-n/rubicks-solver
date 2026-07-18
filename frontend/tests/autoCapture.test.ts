@@ -173,6 +173,18 @@ describe("auto capture state machine", () => {
     expect(result.state.phase).toBe("warming");
   });
 
+  it("remembers a scene change that happens during cooldown", () => {
+    let state = { ...INITIAL_AUTO_CAPTURE_STATE };
+    for (let time = 0; time <= AUTO_CAPTURE_CONFIG.holdMs + 100; time += 100) {
+      state = advanceAutoCapture(state, ready, time).state;
+    }
+    expect(state.phase).toBe("cooldown");
+    state = advanceAutoCapture(state, { ...ready, motion: 20 }, 900).state;
+    expect(state.sceneChangedSinceCapture).toBe(true);
+    state = advanceAutoCapture(state, ready, 1_600).state;
+    expect(state.phase).toBe("warming");
+  });
+
   it("preserves glare, sharpness, alignment, and motion blockers", () => {
     expect(evaluateMetrics({ ...ready, glareFraction: 0.2 }).blockingReason).toBe("reduce_glare");
     expect(evaluateMetrics({ ...ready, sharpness: 0.5, boundaryStrength: 0.5 }).blockingReason).toBe("too_blurry");
