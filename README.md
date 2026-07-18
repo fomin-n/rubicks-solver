@@ -1,8 +1,9 @@
 # Rubik's 2×2 Camera Solver
 
-A local web application that scans all six faces of a physical 2×2×2 cube, lets you correct the
-recognized colors, validates the physical state, computes a shortest solution, and guides each turn
-with fixed camera overlays.
+A local web application that scans all six faces of a physical 2×2×2 cube, shows recognized colors
+immediately, validates the physical state, computes a shortest solution, and guides each turn with
+fixed camera overlays. A valid six-face scan goes directly to the solution; detailed correction is
+an optional recovery tool.
 
 The repository is intentionally named `rubicks-solver`. The application supports red, blue, orange,
 white, green, and yellow cubes with default opposites white/yellow, red/orange, and green/blue.
@@ -12,7 +13,9 @@ white, green, and yellow cubes with default opposites white/yellow, red/orange, 
 - Guided `F → R → B → L → U → D` capture with automatic hold-to-capture, manual capture,
   or image files.
 - Classical Lab color sampling, balanced six-color clustering, confidence, and quality warnings.
-- Clickable cube-net correction, face rotation, color counts, and scan retakes.
+- A persistent six-face preview strip with provisional/final labels, confidence, warnings, and
+  non-destructive per-face retakes.
+- Targeted invalid-scan recovery plus an optional cube-net editor with face rotation and counts.
 - Detailed physical-state validation and likely face-rotation suggestions.
 - Original optimal 2×2 solver in the Half Turn Metric (HTM).
 - A live colored U/F/R camera ghost, full formula, projected arrows, and physically safe manual
@@ -137,14 +140,21 @@ See [Apple's certificate trust instructions](https://support.apple.com/en-us/102
 ## Using the application
 
 1. Choose **Start scanning**, grant permission, and align each face inside the 2×2 square.
-2. Hold steady while the readiness bar fills. Auto capture is on by default; manual capture and file
-   upload remain available.
-3. On the cube net, click a facelet and choose its actual color. Rotate or retake faces as needed.
-4. Confirm every color count is 4, then choose **Validate and solve**.
+2. Hold steady for roughly 0.65 seconds while the readiness bar fills. Typical usable captures
+   complete in about 0.5–0.9 seconds once framing and movement settle. Auto capture is on by
+   default; manual capture and file upload remain available and commit immediately.
+3. Check each new four-sticker preview. Labels are **Provisional** until all six faces are available,
+   then become globally balanced **Final** labels. A warning asks for attention but does not erase a
+   usable face. Choose **Retake** on any card without losing the other captures.
+4. After Down is captured, validation and optimal solving run automatically. A valid scan skips the
+   editor. If validation finds a physical conflict, only likely faces are highlighted; retake one or
+   choose **Advanced correction** for the full cube net.
 5. Tap **Start camera guidance**, then hold the cube so its real colors match the Up/Front/Right
    ghost. Choose **Orientation matched**. Camera-free schematic guidance remains available.
-6. Follow the highlighted move and full formula, then press **Done / Next**. Clockwise means looking directly at the
-   named face. **Previous / Undo** guides a real inverse move rather than only changing the screen.
+6. Follow the highlighted face and layered arrow, then press **Done / Next**. Prime arrows travel
+   counterclockwise; double turns show a 180° badge and two-headed arc. Clockwise is always defined
+   while looking directly at the named face. **Previous / Undo** and **Restart safely** guide actual
+   inverse turns before changing displayed progress.
 
 For camera-free testing, choose **Try demo without camera**. **Enter manually** starts from a valid
 solved net that can be edited. During scanning, **Upload image** works when camera access is absent.
@@ -157,14 +167,23 @@ solved net that can be edited. During scanning, **Upload image** works when came
 - If Safari was backgrounded or the preview freezes, return to the page and tap **Recover camera**.
 - Use diffuse light, avoid a bright point reflection, fill the square, and keep borders outside each
   sticker's central sample area.
+- Slight softness, low light, or imperfect centering can be accepted with a visible warning. Near-black,
+  clipped/glared, severely blurred, or badly framed candidates remain blockers. If auto capture is
+  inconvenient, turn it off and use **Capture manually**; there is no second confirmation step.
+- A short motion spike pauses the hold instead of discarding all progress. After capture, show a
+  meaningfully different face to rearm; the app remembers a scene change even during processing.
 - If no video device exists, use six image files or the demo/manual modes.
+
+Add `?captureDebug=1` to the application URL to show raw metrics, thresholds, smoothed motion,
+rolling hold state, cooldown, and scene-change status. This opt-in panel is intended for camera
+tuning and does not send diagnostics anywhere.
 
 ## Development and tests
 
 ```bash
 make lint       # Ruff, formatting check, ESLint, TypeScript
 make test       # pytest/Hypothesis and Vitest
-make test-e2e   # real FastAPI + React demo flow in Chromium
+make test-e2e   # real API mobile demo plus deterministic synthetic-camera flows
 make build      # production frontend build
 make mobile-cert # generate ignored LAN certificates with mkcert
 make dev-mobile  # trusted HTTPS frontend on Wi-Fi; backend remains loopback-only
@@ -179,8 +198,18 @@ uv run --project backend python scripts/generate_test_images.py
 Backend tests cover moves and inverses, coordinate/facelet round trips, random scrambles, exact
 solver distances, invalid cubes, image quality, uploads, sessions, validation, and solve responses.
 Frontend tests cover editing, rotation, runtime API parsing, auto-capture hysteresis, camera errors,
-all nine projected moves, authoritative guidance progression, rendering, and the complete demo smoke
-flow. CI requires no camera, certificates, or secrets.
+all nine projected moves, authoritative guidance progression, previews, manual commit policy,
+targeted recovery, and complete mobile flows. The camera flow runs deterministically in mobile
+Chromium; the camera-free demo also runs in mobile WebKit. CI requires no camera, certificates, or
+secrets. Browser emulation is not reported as a physical iPhone result.
+
+## Branch and rollback policy
+
+`master` is the sole active development and deployment branch and the GitHub default branch. Work is
+committed and pushed directly to `master`; this project does not use a deployment pull request. To
+roll back a shipped change while keeping history auditable, use `git revert <commit>` on `master`,
+run the verification commands above, and push the resulting revert commit. Generated certificates,
+solver tables, test images, credentials, and environment files must remain untracked.
 
 ### Physical iPhone verification checklist
 
