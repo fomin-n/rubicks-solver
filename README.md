@@ -9,12 +9,14 @@ white, green, and yellow cubes with default opposites white/yellow, red/orange, 
 
 ## MVP features and limitations
 
-- Guided `F → R → B → L → U → D` capture with camera or image files.
+- Guided `F → R → B → L → U → D` capture with automatic hold-to-capture, manual capture,
+  or image files.
 - Classical Lab color sampling, balanced six-color clustering, confidence, and quality warnings.
 - Clickable cube-net correction, face rotation, color counts, and scan retakes.
 - Detailed physical-state validation and likely face-rotation suggestions.
 - Original optimal 2×2 solver in the Half Turn Metric (HTM).
-- Fixed U/F/R face highlights and projected arrows with manual confirmation, undo, and restart.
+- A live colored U/F/R camera ghost, full formula, projected arrows, and physically safe manual
+  confirmation, undo, and restart.
 - A camera-free demo that exercises the real API from scramble to solved.
 
 This controlled MVP is not unrestricted markerless AR. It does not detect a cube anywhere in the
@@ -87,14 +89,61 @@ make dev
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The Vite frontend proxies `/api` to FastAPI at
 `http://127.0.0.1:8000`. Browser camera APIs work on localhost without a custom TLS certificate.
 
+### Run on an iPhone over Wi-Fi
+
+An iPhone must use trusted HTTPS for camera access; a plain `http://<LAN-IP>` URL is not sufficient.
+The supported local flow uses [mkcert](https://github.com/FiloSottile/mkcert) and keeps FastAPI bound
+to loopback behind Vite's same-origin proxy.
+
+1. Connect the Mac and iPhone to the same Wi-Fi network. Install the certificate tool:
+
+   ```bash
+   brew install mkcert
+   # Optional, for a terminal QR code:
+   brew install qrencode
+   ```
+
+2. Generate a certificate containing the Mac's current Wi-Fi address:
+
+   ```bash
+   make mobile-cert
+   ```
+
+   macOS may request an administrator password while `mkcert -install` adds its local root. If the
+   command was launched non-interactively and prints a trust warning, run `mkcert -install` once in
+   your own terminal, then rerun `make mobile-cert`.
+
+3. Run `mkcert -CAROOT`, open that directory, and transfer **only** `rootCA.pem` to the iPhone
+   (AirDrop is convenient). Never transfer or share `rootCA-key.pem`.
+4. On the iPhone, open the transferred file and install the downloaded profile under
+   **Settings → General → VPN & Device Management**. Then open
+   **Settings → General → About → Certificate Trust Settings** and enable full trust for the
+   mkcert root. Apple requires this separate full-trust step for manually installed roots.
+5. Start the mobile server:
+
+   ```bash
+   make dev-mobile
+   ```
+
+6. Open the printed `https://<LAN-IP>:5173` address in Safari, or scan the terminal QR code. Accept
+   Safari's camera prompt after tapping **Allow camera**.
+
+Certificates and keys are stored only in the ignored `.certs/` directory. If Wi-Fi changes the
+Mac's IP address, rerun `make mobile-cert`. If Safari still reports an untrusted connection, verify
+that the profile is installed, full trust is enabled, and the URL exactly matches the printed IP.
+See [Apple's certificate trust instructions](https://support.apple.com/en-us/102390) and
+[MDN's secure-context requirement](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).
+
 ## Using the application
 
 1. Choose **Start scanning**, grant permission, and align each face inside the 2×2 square.
-2. Capture one face at a time, following whole-cube orientation instructions.
+2. Hold steady while the readiness bar fills. Auto capture is on by default; manual capture and file
+   upload remain available.
 3. On the cube net, click a facelet and choose its actual color. Rotate or retake faces as needed.
 4. Confirm every color count is 4, then choose **Validate and solve**.
-5. Hold the cube so Up, Front, and Right match the fixed three-face guide.
-6. Perform the highlighted move and press **Done / Next**. Clockwise means looking directly at the
+5. Tap **Start camera guidance**, then hold the cube so its real colors match the Up/Front/Right
+   ghost. Choose **Orientation matched**. Camera-free schematic guidance remains available.
+6. Follow the highlighted move and full formula, then press **Done / Next**. Clockwise means looking directly at the
    named face. **Previous / Undo** guides a real inverse move rather than only changing the screen.
 
 For camera-free testing, choose **Try demo without camera**. **Enter manually** starts from a valid
@@ -105,6 +154,7 @@ solved net that can be edited. During scanning, **Upload image** works when came
 - Confirm the page is on `localhost` or `127.0.0.1`, then retry permission in browser site settings.
 - Close other applications using the camera and reload after changing permissions.
 - On a phone, choose the rear camera from the selector if the browser does not honor the preference.
+- If Safari was backgrounded or the preview freezes, return to the page and tap **Recover camera**.
 - Use diffuse light, avoid a bright point reflection, fill the square, and keep borders outside each
   sticker's central sample area.
 - If no video device exists, use six image files or the demo/manual modes.
@@ -116,6 +166,8 @@ make lint       # Ruff, formatting check, ESLint, TypeScript
 make test       # pytest/Hypothesis and Vitest
 make test-e2e   # real FastAPI + React demo flow in Chromium
 make build      # production frontend build
+make mobile-cert # generate ignored LAN certificates with mkcert
+make dev-mobile  # trusted HTTPS frontend on Wi-Fi; backend remains loopback-only
 ```
 
 Generate original visual fixtures with:
@@ -126,8 +178,23 @@ uv run --project backend python scripts/generate_test_images.py
 
 Backend tests cover moves and inverses, coordinate/facelet round trips, random scrambles, exact
 solver distances, invalid cubes, image quality, uploads, sessions, validation, and solve responses.
-Frontend tests cover editing, rotation, runtime API parsing, guidance/inverses, rendering, and the
-complete demo smoke flow. CI requires no camera or secrets.
+Frontend tests cover editing, rotation, runtime API parsing, auto-capture hysteresis, camera errors,
+all nine projected moves, authoritative guidance progression, rendering, and the complete demo smoke
+flow. CI requires no camera, certificates, or secrets.
+
+### Physical iPhone verification checklist
+
+Browser emulation does not substitute for this checklist. Complete it on each representative iPhone
+before describing the feature as physically verified:
+
+- [ ] HTTPS opens without a certificate warning and Safari grants rear-camera permission.
+- [ ] Portrait/landscape rotation, safe areas, bottom controls, and keyboard do not obscure actions.
+- [ ] Preview resumes after backgrounding Safari and camera switching releases the previous device.
+- [ ] All six faces auto-capture once, reject blur/glare, and require scene change between faces.
+- [ ] Colored U/F/R calibration matches the scanned cube and every supported arrow is unambiguous.
+- [ ] Confirm, Previous/Undo, and Restart keep the physical cube aligned with the displayed state.
+
+This checklist has not yet been run on a physical iPhone in the current development environment.
 
 ## Repository structure
 
@@ -150,11 +217,11 @@ API accepts only JPEG, PNG, or WebP files up to 5 MB, caps decoded pixels, and r
 two documented frontend origins. There are no accounts, cookies, analytics, telemetry, or secrets.
 
 The project is MIT licensed. Direct runtime dependencies use permissive licenses; their code is not
-copied into this repository. The solver is an original implementation. See [LICENSE](LICENSE).
+copied into this repository. The solver is an original implementation. See [LICENSE](LICENSE) and
+the recorded [direct dependency license audit](THIRD_PARTY_LICENSES.md).
 
 ## Future improvements
 
-Potential follow-ups include five-face inference, automatic capture, per-device color calibration,
+Potential follow-ups include five-face inference, per-device color calibration,
 `solvePnP` pose estimation, continuous turn verification, hand-occlusion handling, alternative color
 schemes, PWA support, speech instructions, and 3×3×3 support.
-

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 CACHE_DIR := $(CURDIR)/.cache
 
-.PHONY: install solver-table lint test test-e2e build dev
+.PHONY: install solver-table lint test test-e2e build dev mobile-cert dev-mobile
 
 install:
 	uv sync --project backend
@@ -30,3 +30,8 @@ build:
 dev:
 	RUBICKS_SOLVER_CACHE_DIR="$(CACHE_DIR)" ./scripts/dev.sh
 
+mobile-cert:
+	./scripts/mobile-cert.sh
+
+dev-mobile:
+	RUBICKS_SOLVER_CACHE_DIR="$(CACHE_DIR)" ./scripts/dev-mobile.sh
