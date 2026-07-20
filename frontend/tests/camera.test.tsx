@@ -1,9 +1,10 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { CameraCapture } from "../src/camera/CameraCapture";
 import { cameraProblem, useCameraController } from "../src/camera/useCameraController";
 
 const originalMediaDevices = navigator.mediaDevices;
 afterEach(() => {
+  cleanup();
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: originalMediaDevices });
   vi.restoreAllMocks();
 });
@@ -99,12 +100,14 @@ describe("camera controller", () => {
     expect(screen.getByLabelText("Camera")).toHaveValue("rear-1");
     fireEvent.change(screen.getByLabelText("Camera"), { target: { value: "front-1" } });
     expect(onSwitchCamera).toHaveBeenCalledWith("front-1");
-    fireEvent.loadedMetadata(screen.getByLabelText("Live camera preview"));
     const resume = await screen.findByRole("button", { name: "Show camera preview" });
     expect(onPlaybackProblem).toHaveBeenCalledWith("Safari paused the preview. Tap Show camera preview to resume.");
+    Object.defineProperty(screen.getByLabelText("Live camera preview"), "videoWidth", { configurable: true, value: 640 });
+    Object.defineProperty(screen.getByLabelText("Live camera preview"), "videoHeight", { configurable: true, value: 480 });
     fireEvent.click(resume);
     await waitFor(() => expect(onPlaybackRecovered).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByRole("button", { name: "Show camera preview" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Tap to show camera" })).not.toBeInTheDocument();
     unmount();
     expect(pause).toHaveBeenCalled();
     play.mockRestore();

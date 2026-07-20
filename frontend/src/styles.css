@@ -27,9 +27,13 @@ main { max-width: 1280px; min-height: calc(100vh - 132px); margin: auto; padding
 .scan-camera-column { min-width: 0; }
 .scan-preview-dock { min-height: 0; }
 .camera-stack { display: grid; grid-template-rows: minmax(0, 500px) auto; }
-.camera-stage { position: relative; min-height: 0; overflow: hidden; }
-.camera-stage .camera-video, .camera-stage .camera-placeholder { height: 100%; }
+/* iOS camera video is composited outside normal paint; containment/fixed ancestors can leave it black. */
+.camera-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #05070c; }
+.camera-stage .camera-video, .camera-stage .camera-placeholder { position: absolute; inset: 0; width: 100%; height: 100%; }
+.camera-stage .camera-video { display: block; }
+.camera-stage .camera-placeholder { z-index: 1; display: grid; }
 .camera-problem { position: absolute; z-index: 6; top: 72px; left: 12px; right: 12px; border-radius: 10px; box-shadow: 0 8px 24px #000a; }
+.camera-preview-prompt { position: absolute; z-index: 5; left: 50%; bottom: 10px; min-height: 40px; padding: .55rem .8rem; transform: translateX(-50%); border-color: #71e6bd88; background: #07100de8; color: var(--accent); white-space: nowrap; box-shadow: 0 4px 16px #000a; }
 .capture-debug { position: absolute; z-index: 7; right: 10px; bottom: 112px; max-width: min(420px, calc(100% - 20px)); border: 1px solid var(--line); border-radius: 8px; background: #070b12ed; }
 .capture-debug[open] { left: 10px; }
 
@@ -47,7 +51,7 @@ main { max-width: 1280px; min-height: calc(100vh - 132px); margin: auto; padding
 @media (max-width: 800px) {
   :root { --scan-topbar-height: calc(56px + env(safe-area-inset-top)); }
   html.scan-active, body.scan-active { width: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
-  body.scan-active { position: fixed; inset: 0; padding: 0; }
+  body.scan-active { padding: 0; }
   body.scan-active .topbar { width: 100%; max-width: none; height: var(--scan-topbar-height); padding: env(safe-area-inset-top) 14px 0; }
   body.scan-active main { width: 100%; max-width: none; height: calc(100dvh - var(--scan-topbar-height)); min-height: 0; margin: 0; padding: 0; overflow: hidden; }
   body.scan-active footer { display: none; }
@@ -69,7 +73,7 @@ main { max-width: 1280px; min-height: calc(100vh - 132px); margin: auto; padding
 
   .scan-camera-column { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 80px; overflow: hidden; background: #05070c; }
   .scan-camera-column .camera-stack { width: 100%; height: auto; min-height: 0; max-height: 100%; align-self: stretch; grid-template-rows: minmax(0, 1fr) 100px; border-inline: 0; border-radius: 0; }
-  .camera-stage { width: 100%; height: auto; min-height: 0; contain: size layout paint; }
+  .camera-stage { width: 100%; height: auto; min-height: 0; contain: none; }
   .camera-stage .camera-video, .camera-stage .camera-placeholder { width: 100%; height: 100%; min-height: 0; }
   .scan-guide { top: 50%; width: auto; height: min(72vw, calc(100% - 120px), 400px); max-width: calc(100% - 24px); max-height: calc(100% - 120px); }
   .capture-readiness { top: 7px; width: min(84%, 330px); min-height: 42px; padding: 6px 12px; gap: 3px; font-size: .72rem; }

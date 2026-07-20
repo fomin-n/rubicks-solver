@@ -22,6 +22,7 @@ async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
     const context = canvas.getContext("2d")!;
     let currentFace: keyof typeof injectedScans = "F";
     let changedFrames = 0;
+    let activeTrack: CanvasCaptureMediaStreamTrack | undefined;
     const draw = (face: keyof typeof injectedScans) => {
       currentFace = face;
       injectedScans[face].forEach((color, index) => {
@@ -31,6 +32,7 @@ async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
       // Keep the scene-change signal pending until the analyzer has actually
       // observed it. Backend processing can outlast the capture cooldown.
       changedFrames = 8;
+      activeTrack?.requestFrame();
     };
     draw("F");
     changedFrames = 0;
@@ -43,8 +45,15 @@ async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
     };
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
       getUserMedia: async () => {
-        const stream = canvas.captureStream(12);
-        Object.defineProperty(stream.getVideoTracks()[0], "getSettings", { configurable: true, value: () => ({ deviceId: "synthetic", facingMode: "environment" }) });
+        const stream = canvas.captureStream(0);
+        activeTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+        Object.defineProperty(activeTrack, "getSettings", { configurable: true, value: () => ({ deviceId: "synthetic", facingMode: "environment" }) });
+        activeTrack.requestFrame();
+        window.setInterval(() => {
+          context.fillStyle = "#121212";
+          context.fillRect(0, 0, 1, 1);
+          activeTrack?.requestFrame();
+        }, 50);
         return stream;
       },
       enumerateDevices: async () => [
@@ -106,6 +115,11 @@ async function scanGeometry(page: Page): Promise<ScanGeometry> {
     };
     const stage = rectangle(".camera-stage");
     if (!stage) throw new Error("Camera stage is missing");
+    const stageElement = document.querySelector<HTMLElement>(".camera-stage");
+    const stageMedia = stageElement?.querySelector<HTMLElement>(".camera-video, .camera-placeholder");
+    if (!stageElement || getComputedStyle(stageElement).contain !== "none") throw new Error("Camera stage must not use CSS containment");
+    if (!stageMedia || getComputedStyle(stageMedia).position !== "absolute") throw new Error("Camera media must not contribute intrinsic layout size");
+    if (getComputedStyle(document.body).position === "fixed") throw new Error("The camera cannot live inside a fixed document compositor");
     const scrolling = document.scrollingElement;
     if (!scrolling || scrolling.scrollHeight > window.innerHeight + 1 || scrolling.scrollWidth > window.innerWidth + 1) {
       throw new Error("Scan document exceeds the mobile viewport");
@@ -153,8 +167,15 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   await installSyntheticCamera(page);
   await startCameraScan(page);
   await expect(page.getByLabel("Camera", { exact: true })).toHaveValue("synthetic");
-
   await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("F"));
+  await expect.poll(async () => await page.getByLabel("Live camera preview", { exact: true }).evaluate((element) => {
+    const video = element as HTMLVideoElement;
+    const stream = video.srcObject as MediaStream | null;
+    const track = stream?.getVideoTracks()[0];
+    return { paused: video.paused, width: video.videoWidth, streamActive: stream?.active, trackMuted: track?.muted, trackState: track?.readyState };
+  })).toMatchObject({ paused: false, width: 640, streamActive: true, trackMuted: false, trackState: "live" });
+  await expect(page.getByRole("button", { name: "Tap to show camera" })).toHaveCount(0);
+
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Captured faces", { exact: true })).toBeVisible();
   await expect(page.getByLabel("F recognized sticker preview").locator("span")).toHaveCount(4);

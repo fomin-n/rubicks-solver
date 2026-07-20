@@ -88,6 +88,7 @@ export function CameraCapture(props: Props) {
   const [machine, setMachine] = useState(machineRef.current);
   const [metrics, setMetrics] = useState<CaptureMetrics | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
 
   const resumePreview = useCallback(async () => {
     const video = videoRef.current;
@@ -95,12 +96,17 @@ export function CameraCapture(props: Props) {
     try {
       await video.play();
       setPlaybackBlocked(false);
+      setPreviewPlaying(Boolean(video.videoWidth && video.videoHeight));
       onPlaybackRecovered();
     } catch {
       setPlaybackBlocked(true);
       onPlaybackProblem("Safari blocked the live preview. Tap Show camera preview again, or reload Safari.");
     }
   }, [onPlaybackProblem, onPlaybackRecovered]);
+
+  useEffect(() => {
+    setPreviewPlaying(false);
+  }, [stream]);
 
   useEffect(() => {
     if (!["cooldown", "scene_change"].includes(machineRef.current.phase)) {
@@ -138,6 +144,7 @@ export function CameraCapture(props: Props) {
         await video.play();
         if (!cancelled) {
           setPlaybackBlocked(false);
+          setPreviewPlaying(Boolean(video.videoWidth && video.videoHeight));
           onPlaybackRecovered();
         }
       } catch {
@@ -148,15 +155,35 @@ export function CameraCapture(props: Props) {
       }
     };
     const handleReady = () => void play();
-    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) void play();
-    else video.addEventListener("loadedmetadata", handleReady, { once: true });
+    const handlePlaying = () => {
+      if (!cancelled) {
+        setPlaybackBlocked(false);
+        setPreviewPlaying(Boolean(video.videoWidth && video.videoHeight));
+        onPlaybackRecovered();
+      }
+    };
+    const handleFrameReady = () => {
+      if (!cancelled && video.videoWidth && video.videoHeight && !video.paused) {
+        setPlaybackBlocked(false);
+        setPreviewPlaying(true);
+        onPlaybackRecovered();
+      }
+    };
+    void play();
+    video.addEventListener("loadedmetadata", handleReady, { once: true });
     video.addEventListener("canplay", handleReady, { once: true });
+    video.addEventListener("playing", handlePlaying);
+    video.addEventListener("loadeddata", handleFrameReady);
+    video.addEventListener("resize", handleFrameReady);
     for (const track of stream.getVideoTracks()) track.addEventListener("unmute", handleReady, { once: true });
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
       video.removeEventListener("loadedmetadata", handleReady);
       video.removeEventListener("canplay", handleReady);
+      video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("loadeddata", handleFrameReady);
+      video.removeEventListener("resize", handleFrameReady);
       for (const track of stream.getVideoTracks()) track.removeEventListener("unmute", handleReady);
       video.pause();
       video.srcObject = null;
@@ -224,6 +251,7 @@ export function CameraCapture(props: Props) {
         <span>{status}</span>
         {props.autoEnabled && <progress max="1" value={machine.progress} aria-label="Auto-capture hold progress" />}
       </div>
+      {!previewPlaying && !playbackBlocked && <button className="camera-preview-prompt" onClick={() => void resumePreview()}>Tap to show camera</button>}
     </> : <div className="camera-placeholder">Camera-free image mode</div>}</div>
     {(props.problem || playbackBlocked) && <div className="camera-problem" role="alert"><span>{props.problem?.message ?? "Safari paused the camera preview."}</span>{props.problem?.code === "playback" || playbackBlocked
       ? <button onClick={() => void resumePreview()}>Show camera preview</button>
