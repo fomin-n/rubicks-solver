@@ -42,8 +42,15 @@ async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
       draw(face);
     };
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: {
-      getUserMedia: async () => canvas.captureStream(12),
-      enumerateDevices: async () => [{ deviceId: "synthetic", kind: "videoinput", label: "Synthetic rear camera", groupId: "synthetic", toJSON: () => ({}) }],
+      getUserMedia: async () => {
+        const stream = canvas.captureStream(12);
+        Object.defineProperty(stream.getVideoTracks()[0], "getSettings", { configurable: true, value: () => ({ deviceId: "synthetic", facingMode: "environment" }) });
+        return stream;
+      },
+      enumerateDevices: async () => [
+        { deviceId: "synthetic", kind: "videoinput", label: "Synthetic rear camera", groupId: "synthetic", toJSON: () => ({}) },
+        { deviceId: "synthetic-front", kind: "videoinput", label: "Synthetic front camera", groupId: "synthetic", toJSON: () => ({}) },
+      ],
     } });
     Object.defineProperty(navigator, "vibrate", { configurable: true, value: () => true });
     (window as unknown as { __rubiksE2ECamera: object }).__rubiksE2ECamera = {
@@ -145,6 +152,7 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   test.skip(browserName !== "chromium", "Canvas MediaStream injection is the deterministic Chromium camera test.");
   await installSyntheticCamera(page);
   await startCameraScan(page);
+  await expect(page.getByLabel("Camera", { exact: true })).toHaveValue("synthetic");
 
   await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("F"));
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });

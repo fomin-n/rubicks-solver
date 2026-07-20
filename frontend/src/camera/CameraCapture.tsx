@@ -15,15 +15,17 @@ import type { CaptureSource } from "./capturePolicy";
 interface Props {
   stream: MediaStream | null;
   devices: MediaDeviceInfo[];
+  selectedDeviceId: string | null;
   problem: CameraProblem | null;
   busy: boolean;
   captureKey: string;
   autoEnabled: boolean;
   onAutoChange: (enabled: boolean) => void;
   onCapture: (blob: Blob, source: CaptureSource) => void;
-  onSwitchCamera: (deviceId: string) => void;
+  onSwitchCamera: (deviceId?: string) => void;
   onRecover: () => void;
   onPlaybackProblem: (message: string) => void;
+  onPlaybackRecovered: () => void;
 }
 
 const debugEnabled = new URLSearchParams(window.location.search).get("captureDebug") === "1";
@@ -77,7 +79,7 @@ function analysisPixels(video: HTMLVideoElement, canvas: HTMLCanvasElement): Uin
 }
 
 export function CameraCapture(props: Props) {
-  const { stream, onPlaybackProblem, onCapture } = props;
+  const { stream, onPlaybackProblem, onPlaybackRecovered, onCapture } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement>(document.createElement("canvas"));
   const previousLumaRef = useRef<Uint8Array | undefined>(undefined);
@@ -85,6 +87,20 @@ export function CameraCapture(props: Props) {
   const capturePendingRef = useRef(false);
   const [machine, setMachine] = useState(machineRef.current);
   const [metrics, setMetrics] = useState<CaptureMetrics | null>(null);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+
+  const resumePreview = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      await video.play();
+      setPlaybackBlocked(false);
+      onPlaybackRecovered();
+    } catch {
+      setPlaybackBlocked(true);
+      onPlaybackProblem("Safari blocked the live preview. Tap Show camera preview again, or reload Safari.");
+    }
+  }, [onPlaybackProblem, onPlaybackRecovered]);
 
   useEffect(() => {
     if (!["cooldown", "scene_change"].includes(machineRef.current.phase)) {
@@ -104,25 +120,48 @@ export function CameraCapture(props: Props) {
     if (!video || !stream) return;
     video.autoplay = true;
     video.muted = true;
+    video.defaultMuted = true;
     video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
     video.srcObject = stream;
+    setPlaybackBlocked(false);
     let cancelled = false;
     const timeout = window.setTimeout(() => {
-      if (!cancelled && (!video.videoWidth || !video.videoHeight)) onPlaybackProblem("Safari has not produced camera frames. Tap Recover camera or reload the page.");
-    }, 5_000);
+      if (!cancelled && (!video.videoWidth || !video.videoHeight)) {
+        setPlaybackBlocked(true);
+        onPlaybackProblem("Safari has not displayed camera frames. Tap Show camera preview, or reload Safari.");
+      }
+    }, 6_000);
     const play = async () => {
-      try { await video.play(); }
-      catch { if (!cancelled) onPlaybackProblem("Safari paused the preview. Tap Recover camera to resume."); }
+      try {
+        await video.play();
+        if (!cancelled) {
+          setPlaybackBlocked(false);
+          onPlaybackRecovered();
+        }
+      } catch {
+        if (!cancelled) {
+          setPlaybackBlocked(true);
+          onPlaybackProblem("Safari paused the preview. Tap Show camera preview to resume.");
+        }
+      }
     };
+    const handleReady = () => void play();
     if (video.readyState >= HTMLMediaElement.HAVE_METADATA) void play();
-    else video.addEventListener("loadedmetadata", () => void play(), { once: true });
+    else video.addEventListener("loadedmetadata", handleReady, { once: true });
+    video.addEventListener("canplay", handleReady, { once: true });
+    for (const track of stream.getVideoTracks()) track.addEventListener("unmute", handleReady, { once: true });
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
+      video.removeEventListener("loadedmetadata", handleReady);
+      video.removeEventListener("canplay", handleReady);
+      for (const track of stream.getVideoTracks()) track.removeEventListener("unmute", handleReady);
       video.pause();
       video.srcObject = null;
     };
-  }, [stream, onPlaybackProblem]);
+  }, [stream, onPlaybackProblem, onPlaybackRecovered]);
 
   const capture = useCallback(async (source: "auto" | "manual") => {
     const video = videoRef.current;
@@ -186,11 +225,13 @@ export function CameraCapture(props: Props) {
         {props.autoEnabled && <progress max="1" value={machine.progress} aria-label="Auto-capture hold progress" />}
       </div>
     </> : <div className="camera-placeholder">Camera-free image mode</div>}</div>
-    {props.problem && <div className="camera-problem" role="alert"><span>{props.problem.message}</span><button onClick={props.onRecover}>Recover camera</button></div>}
+    {(props.problem || playbackBlocked) && <div className="camera-problem" role="alert"><span>{props.problem?.message ?? "Safari paused the camera preview."}</span>{props.problem?.code === "playback" || playbackBlocked
+      ? <button onClick={() => void resumePreview()}>Show camera preview</button>
+      : <button onClick={props.onRecover}>Recover camera</button>}</div>}
     <div className="camera-actions">
       <label className="toggle"><input type="checkbox" checked={props.autoEnabled} onChange={(event) => props.onAutoChange(event.target.checked)} /> Auto capture</label>
-      {props.devices.length > 1 && <label>Camera <select onChange={(event) => props.onSwitchCamera(event.target.value)} defaultValue="">
-        <option value="" disabled>Choose…</option>
+      {props.devices.length > 1 && <label>Camera <select aria-label="Camera" disabled={props.busy} onChange={(event) => props.onSwitchCamera(event.target.value || undefined)} value={props.selectedDeviceId ?? ""}>
+        <option value="">Automatic rear camera</option>
         {props.devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}
       </select></label>}
       {props.stream && <button disabled={props.busy} onClick={() => void capture("manual")}>{props.busy ? "Processing…" : "Capture manually"}</button>}

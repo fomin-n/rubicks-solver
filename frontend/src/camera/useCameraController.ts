@@ -7,8 +7,14 @@ export interface CameraProblem {
   message: string;
 }
 
+function errorName(error: unknown): string {
+  return typeof error === "object" && error !== null && "name" in error
+    ? String((error as { name: unknown }).name)
+    : "";
+}
+
 export function cameraProblem(error: unknown): CameraProblem {
-  const name = error instanceof DOMException ? error.name : "";
+  const name = errorName(error);
   if (name === "NotAllowedError" || name === "SecurityError") return { code: "permission_denied", message: "Camera permission is blocked. Allow camera access in Safari Settings, then try again." };
   if (name === "NotFoundError") return { code: "not_found", message: "No camera was found. Connect a camera or upload an image." };
   if (name === "NotReadableError" || name === "AbortError") return { code: "in_use", message: "The camera is unavailable or being used by another app. Close it there and retry." };
@@ -19,6 +25,7 @@ export function cameraProblem(error: unknown): CameraProblem {
 export function useCameraController() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [problem, setProblem] = useState<CameraProblem | null>(null);
   const [starting, setStarting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
@@ -29,6 +36,7 @@ export function useCameraController() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setStream(null);
+    setSelectedDeviceId(null);
   }, []);
 
   const start = useCallback(async (deviceId?: string): Promise<boolean> => {
@@ -41,27 +49,43 @@ export function useCameraController() {
     setProblem(null);
     stop();
     lastDeviceRef.current = deviceId;
-    const preferred: MediaStreamConstraints = {
-      audio: false,
-      video: deviceId
-        ? { deviceId: { exact: deviceId } }
-        : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    };
+    const candidates: MediaStreamConstraints[] = [
+      ...(deviceId ? [{ audio: false, video: { deviceId: { exact: deviceId } } } satisfies MediaStreamConstraints] : []),
+      { audio: false, video: { facingMode: { exact: "environment" } } },
+      { audio: false, video: { facingMode: { ideal: "environment" } } },
+      { audio: false, video: true },
+    ];
     const request = (async () => {
       try {
-        let selected: MediaStream;
-        try {
-          selected = await navigator.mediaDevices.getUserMedia(preferred);
-        } catch (error) {
-          if (deviceId || error instanceof DOMException && ["NotAllowedError", "SecurityError", "NotReadableError"].includes(error.name)) throw error;
-          selected = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        let selected: MediaStream | null = null;
+        let lastError: unknown;
+        for (const constraints of candidates) {
+          try {
+            selected = await navigator.mediaDevices.getUserMedia(constraints);
+            break;
+          } catch (error) {
+            lastError = error;
+            if (["NotAllowedError", "SecurityError", "NotReadableError", "AbortError"].includes(errorName(error))) throw error;
+          }
         }
+        if (!selected) throw lastError ?? new DOMException("No camera stream was returned", "NotFoundError");
         streamRef.current = selected;
         setStream(selected);
         const available = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
-        setDevices(available.filter((item) => item.kind === "videoinput"));
+        const videoDevices = available.filter((item) => item.kind === "videoinput");
+        setDevices(videoDevices);
+        const selectedTrack = selected.getVideoTracks()[0];
+        const settingsId = selectedTrack?.getSettings?.().deviceId;
+        const matchingId = settingsId && videoDevices.some((item) => item.deviceId === settingsId)
+          ? settingsId
+          : videoDevices.find((item) => item.label && item.label === selectedTrack?.label)?.deviceId;
+        const activeDeviceId = matchingId ?? null;
+        setSelectedDeviceId(activeDeviceId);
+        lastDeviceRef.current = activeDeviceId ?? deviceId;
         for (const track of selected.getVideoTracks()) {
-          track.addEventListener("ended", () => setProblem({ code: "interrupted", message: "The camera stopped. Tap Recover camera to continue." }), { once: true });
+          track.addEventListener("ended", () => {
+            if (streamRef.current === selected) setProblem({ code: "interrupted", message: "The camera stopped. Tap Recover camera to continue." });
+          }, { once: true });
         }
         return selected;
       } catch (error) {
@@ -79,6 +103,7 @@ export function useCameraController() {
   const switchCamera = useCallback((deviceId: string) => start(deviceId), [start]);
   const recover = useCallback(() => start(lastDeviceRef.current), [start]);
   const reportPlaybackProblem = useCallback((message: string) => setProblem({ code: "playback", message }), []);
+  const clearProblem = useCallback(() => setProblem(null), []);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -90,5 +115,5 @@ export function useCameraController() {
     return () => { document.removeEventListener("visibilitychange", onVisibility); stop(); };
   }, [stop]);
 
-  return { stream, devices, problem, starting, start, stop, switchCamera, recover, reportPlaybackProblem };
+  return { stream, devices, selectedDeviceId, problem, starting, start, stop, switchCamera, recover, reportPlaybackProblem, clearProblem };
 }
