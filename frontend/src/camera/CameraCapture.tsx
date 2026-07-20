@@ -81,6 +81,8 @@ function analysisPixels(video: HTMLVideoElement, canvas: HTMLCanvasElement): Uin
 export function CameraCapture(props: Props) {
   const { stream, onPlaybackProblem, onPlaybackRecovered, onCapture } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasPreviewActiveRef = useRef(false);
   const analysisCanvasRef = useRef<HTMLCanvasElement>(document.createElement("canvas"));
   const previousLumaRef = useRef<Uint8Array | undefined>(undefined);
   const machineRef = useRef<AutoCaptureState>({ ...INITIAL_AUTO_CAPTURE_STATE });
@@ -89,6 +91,7 @@ export function CameraCapture(props: Props) {
   const [metrics, setMetrics] = useState<CaptureMetrics | null>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [canvasPreviewActive, setCanvasPreviewActive] = useState(false);
 
   const resumePreview = useCallback(async () => {
     const video = videoRef.current;
@@ -106,6 +109,8 @@ export function CameraCapture(props: Props) {
 
   useEffect(() => {
     setPreviewPlaying(false);
+    setCanvasPreviewActive(false);
+    canvasPreviewActiveRef.current = false;
   }, [stream]);
 
   useEffect(() => {
@@ -190,6 +195,66 @@ export function CameraCapture(props: Props) {
     };
   }, [stream, onPlaybackProblem, onPlaybackRecovered]);
 
+  // Some iPhone WebKit camera sessions deliver live frames while the native
+  // video compositor remains black. Paint those same frames into a normal
+  // canvas layer so scanning does not depend on that compositor path.
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = previewCanvasRef.current;
+    if (!video || !canvas || !stream) return;
+    let cancelled = false;
+    let timer = 0;
+    let lastDraw = 0;
+
+    const schedule = () => {
+      if (cancelled) return;
+      // Do not rely on requestVideoFrameCallback here: the exact iPhone
+      // failure this layer handles can stop presentation callbacks even while
+      // getUserMedia continues delivering a live track.
+      timer = window.setTimeout(() => drawFrame(performance.now()), 50);
+    };
+    const drawFrame = (now: number) => {
+      if (cancelled) return;
+      if (now - lastDraw >= 45 && video.videoWidth && video.videoHeight) {
+        const bounds = canvas.getBoundingClientRect();
+        if (bounds.width && bounds.height) {
+          const sourceScale = Math.max(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
+          const sourceWidth = bounds.width / sourceScale;
+          const sourceHeight = bounds.height / sourceScale;
+          const sourceX = (video.videoWidth - sourceWidth) / 2;
+          const sourceY = (video.videoHeight - sourceHeight) / 2;
+          const maxScale = 1024 / Math.max(bounds.width, bounds.height);
+          const pixelScale = Math.max(1, Math.min(window.devicePixelRatio || 1, 2, maxScale));
+          const outputWidth = Math.max(1, Math.round(bounds.width * pixelScale));
+          const outputHeight = Math.max(1, Math.round(bounds.height * pixelScale));
+          if (canvas.width !== outputWidth) canvas.width = outputWidth;
+          if (canvas.height !== outputHeight) canvas.height = outputHeight;
+          const context = canvas.getContext("2d", { alpha: false });
+          if (context) {
+            try {
+              context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
+              lastDraw = now;
+              if (!canvasPreviewActiveRef.current) {
+                canvasPreviewActiveRef.current = true;
+                setCanvasPreviewActive(true);
+              }
+            } catch {
+              // The next delivered frame gets another chance; native video
+              // and the explicit upload control remain available underneath.
+            }
+          }
+        }
+      }
+      schedule();
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [stream]);
+
   const capture = useCallback(async (source: "auto" | "manual") => {
     const video = videoRef.current;
     if (!video || capturePendingRef.current) return;
@@ -246,12 +311,13 @@ export function CameraCapture(props: Props) {
   return <div className="camera-stack">
     <div className="camera-stage">{props.stream ? <>
       <video ref={videoRef} autoPlay muted playsInline className="camera-video" aria-label="Live camera preview" />
+      <canvas ref={previewCanvasRef} className={`camera-preview-canvas${canvasPreviewActive ? " active" : ""}`} aria-hidden="true" />
       <div className="scan-guide" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className={`capture-readiness ${machine.status}`} role="status">
         <span>{status}</span>
         {props.autoEnabled && <progress max="1" value={machine.progress} aria-label="Auto-capture hold progress" />}
       </div>
-      {!previewPlaying && !playbackBlocked && <button className="camera-preview-prompt" onClick={() => void resumePreview()}>Tap to show camera</button>}
+      {!previewPlaying && !canvasPreviewActive && !playbackBlocked && <button className="camera-preview-prompt" onClick={() => void resumePreview()}>Tap to show camera</button>}
     </> : <div className="camera-placeholder">Camera-free image mode</div>}</div>
     {(props.problem || playbackBlocked) && <div className="camera-problem" role="alert"><span>{props.problem?.message ?? "Safari paused the camera preview."}</span>{props.problem?.code === "playback" || playbackBlocked
       ? <button onClick={() => void resumePreview()}>Show camera preview</button>

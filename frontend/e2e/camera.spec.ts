@@ -115,6 +115,7 @@ async function scanGeometry(page: Page): Promise<ScanGeometry> {
     };
     const stage = rectangle(".camera-stage");
     if (!stage) throw new Error("Camera stage is missing");
+    if (stage.width < 240 || stage.height < 240) throw new Error(`Camera stage collapsed to ${stage.width}×${stage.height}`);
     const stageElement = document.querySelector<HTMLElement>(".camera-stage");
     const stageMedia = stageElement?.querySelector<HTMLElement>(".camera-video, .camera-placeholder");
     if (!stageElement || getComputedStyle(stageElement).contain !== "none") throw new Error("Camera stage must not use CSS containment");
@@ -174,6 +175,18 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
     const track = stream?.getVideoTracks()[0];
     return { paused: video.paused, width: video.videoWidth, streamActive: stream?.active, trackMuted: track?.muted, trackState: track?.readyState };
   })).toMatchObject({ paused: false, width: 640, streamActive: true, trackMuted: false, trackState: "live" });
+  await expect.poll(async () => await page.locator(".camera-preview-canvas").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const bounds = canvas.getBoundingClientRect();
+    return canvas.classList.contains("active") && bounds.width >= 240 && bounds.height >= 240;
+  })).toBe(true);
+  await expect.poll(async () => await page.locator(".camera-preview-canvas").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context || !canvas.width || !canvas.height) return false;
+    const pixel = context.getImageData(Math.floor(canvas.width / 4), Math.floor(canvas.height / 4), 1, 1).data;
+    return pixel[3] === 255 && pixel[0] + pixel[1] + pixel[2] > 0;
+  })).toBe(true);
   await expect(page.getByRole("button", { name: "Tap to show camera" })).toHaveCount(0);
 
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });
