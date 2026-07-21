@@ -1,15 +1,6 @@
 import type { CSSProperties } from "react";
-import { COLORS, type CubeColor, type CubeMove, type Facelets } from "../types";
+import { CANONICAL_COLOR_HEX, COLORS, type CubeMove, type Facelets } from "../types";
 import { FACE_QUADS, arrowGeometry, faceletPolygons, pointsAttribute, type VisibleFace } from "./projection";
-
-const COLOR_HEX: Record<CubeColor, string> = {
-  red: "#e84255",
-  blue: "#3e88e9",
-  orange: "#f39b38",
-  white: "#edf0e8",
-  green: "#38bf83",
-  yellow: "#f1d54c",
-};
 
 export function ArrowOverlay({ move, facelets, calibration = false }: { move: CubeMove; facelets: Facelets; calibration?: boolean }) {
   const arrow = arrowGeometry(move);
@@ -25,7 +16,7 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
       data-facelet={index}
       points={pointsAttribute(points)}
       className={`guide-sticker ${face === move.face && !calibration ? "active" : ""}`}
-      style={{ "--guide-color": COLOR_HEX[facelets[face][index]] } as CSSProperties}
+      style={{ "--guide-color": CANONICAL_COLOR_HEX[facelets[face][index]] } as CSSProperties}
     />))}
     {!calibration && <polygon points={pointsAttribute([...FACE_QUADS[move.face]])} className="active-face-wash" data-active-face={move.face} />}
     {faces.map((face) => <polygon key={`${face}-outline`} points={pointsAttribute([...FACE_QUADS[face]])} className={`guide-face-outline ${face === move.face && !calibration ? "active" : ""}`} />)}

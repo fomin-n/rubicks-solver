@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
-import { CameraCapture } from "../src/camera/CameraCapture";
+import { CameraCapture, sourceCropForGuide } from "../src/camera/CameraCapture";
 import { cameraProblem, useCameraController } from "../src/camera/useCameraController";
 
 const originalMediaDevices = navigator.mediaDevices;
@@ -10,6 +10,20 @@ afterEach(() => {
 });
 
 describe("camera controller", () => {
+  it("maps the exact smaller visible guide through object-fit cover", () => {
+    const videoBounds = { left: 10, top: 20, width: 390, height: 500 };
+    const guideBounds = { left: 135, top: 200, width: 140, height: 140 };
+    const crop = sourceCropForGuide(1920, 1080, videoBounds, guideBounds);
+    const scale = Math.max(videoBounds.width / 1920, videoBounds.height / 1080);
+    const renderedWidth = 1920 * scale;
+    const renderedHeight = 1080 * scale;
+
+    expect(crop.sourceX * scale - (renderedWidth - videoBounds.width) / 2 + videoBounds.left).toBeCloseTo(guideBounds.left);
+    expect(crop.sourceY * scale - (renderedHeight - videoBounds.height) / 2 + videoBounds.top).toBeCloseTo(guideBounds.top);
+    expect(crop.sourceSize * scale).toBeCloseTo(guideBounds.width);
+    expect(guideBounds.width).toBeLessThan(Math.min(videoBounds.width, videoBounds.height) * 0.4);
+  });
+
   it("maps browser failures to actionable errors", () => {
     expect(cameraProblem(new DOMException("blocked", "NotAllowedError")).code).toBe("permission_denied");
     expect(cameraProblem(new DOMException("busy", "NotReadableError")).code).toBe("in_use");

@@ -37,21 +37,49 @@ function e2eBridge(): E2ECameraBridge | undefined {
   return import.meta.env.VITE_E2E === "1" ? (window as unknown as { __rubiksE2ECamera?: E2ECameraBridge }).__rubiksE2ECamera : undefined;
 }
 
+interface Rectangle {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 // Exported for exact object-fit ROI tests.
 // eslint-disable-next-line react-refresh/only-export-components
-export async function captureVideoRoi(video: HTMLVideoElement, size = 768): Promise<Blob | null> {
+export function sourceCropForGuide(
+  videoWidth: number,
+  videoHeight: number,
+  videoBounds: Rectangle,
+  guideBounds: Rectangle,
+) {
+  const scale = Math.max(videoBounds.width / videoWidth, videoBounds.height / videoHeight);
+  const renderedWidth = videoWidth * scale;
+  const renderedHeight = videoHeight * scale;
+  const guideSize = Math.min(guideBounds.width, guideBounds.height);
+  return {
+    sourceX: (guideBounds.left - videoBounds.left + (renderedWidth - videoBounds.width) / 2) / scale,
+    sourceY: (guideBounds.top - videoBounds.top + (renderedHeight - videoBounds.height) / 2) / scale,
+    sourceSize: guideSize / scale,
+  };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export async function captureVideoRoi(video: HTMLVideoElement, size = 768, guide?: HTMLElement): Promise<Blob | null> {
   const injectedBlob = e2eBridge()?.captureBlob;
   if (injectedBlob) return await injectedBlob();
   if (!video.videoWidth || !video.videoHeight) return null;
   const bounds = video.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return null;
-  const scale = Math.max(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
-  const renderedWidth = video.videoWidth * scale;
-  const renderedHeight = video.videoHeight * scale;
-  const cropSizeCss = Math.min(bounds.width, bounds.height) * 0.72;
-  const sourceX = ((bounds.width - cropSizeCss) / 2 + (renderedWidth - bounds.width) / 2) / scale;
-  const sourceY = ((bounds.height - cropSizeCss) / 2 + (renderedHeight - bounds.height) / 2) / scale;
-  const sourceSize = cropSizeCss / scale;
+  const fallbackSize = Math.min(bounds.width, bounds.height) * 0.36;
+  const guideBounds = guide?.getBoundingClientRect() ?? {
+    left: bounds.left + (bounds.width - fallbackSize) / 2,
+    top: bounds.top + (bounds.height - fallbackSize) / 2,
+    width: fallbackSize,
+    height: fallbackSize,
+  };
+  const { sourceX, sourceY, sourceSize } = sourceCropForGuide(
+    video.videoWidth, video.videoHeight, bounds, guideBounds,
+  );
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -59,17 +87,15 @@ export async function captureVideoRoi(video: HTMLVideoElement, size = 768): Prom
   return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
 }
 
-function analysisPixels(video: HTMLVideoElement, canvas: HTMLCanvasElement): Uint8ClampedArray | null {
+function analysisPixels(video: HTMLVideoElement, guide: HTMLElement, canvas: HTMLCanvasElement): Uint8ClampedArray | null {
   if (!video.videoWidth || !video.videoHeight) return null;
   const bounds = video.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return null;
-  const scale = Math.max(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
-  const renderedWidth = video.videoWidth * scale;
-  const renderedHeight = video.videoHeight * scale;
-  const cropSizeCss = Math.min(bounds.width, bounds.height) * 0.72;
-  const sourceX = ((bounds.width - cropSizeCss) / 2 + (renderedWidth - bounds.width) / 2) / scale;
-  const sourceY = ((bounds.height - cropSizeCss) / 2 + (renderedHeight - bounds.height) / 2) / scale;
-  const sourceSize = cropSizeCss / scale;
+  const guideBounds = guide.getBoundingClientRect();
+  if (!guideBounds.width || !guideBounds.height) return null;
+  const { sourceX, sourceY, sourceSize } = sourceCropForGuide(
+    video.videoWidth, video.videoHeight, bounds, guideBounds,
+  );
   canvas.width = AUTO_CAPTURE_CONFIG.analysisSize;
   canvas.height = AUTO_CAPTURE_CONFIG.analysisSize;
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -81,6 +107,7 @@ function analysisPixels(video: HTMLVideoElement, canvas: HTMLCanvasElement): Uin
 export function CameraCapture(props: Props) {
   const { stream, onPlaybackProblem, onPlaybackRecovered, onCapture } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const guideRef = useRef<HTMLDivElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasPreviewActiveRef = useRef(false);
   const analysisCanvasRef = useRef<HTMLCanvasElement>(document.createElement("canvas"));
@@ -259,7 +286,7 @@ export function CameraCapture(props: Props) {
     const video = videoRef.current;
     if (!video || capturePendingRef.current) return;
     capturePendingRef.current = true;
-    const blob = await captureVideoRoi(video);
+    const blob = await captureVideoRoi(video, 768, guideRef.current ?? undefined);
     if (blob) onCapture(blob, source);
     else capturePendingRef.current = false;
   }, [onCapture]);
@@ -276,7 +303,8 @@ export function CameraCapture(props: Props) {
       if (document.visibilityState === "visible" && !props.busy && now - lastAnalysis >= AUTO_CAPTURE_CONFIG.intervalMs) {
         lastAnalysis = now;
         const injectedMetrics = e2eBridge()?.metrics?.();
-        const pixels = injectedMetrics ? null : analysisPixels(video, analysisCanvasRef.current);
+        const guide = guideRef.current;
+        const pixels = injectedMetrics || !guide ? null : analysisPixels(video, guide, analysisCanvasRef.current);
         if (injectedMetrics || pixels) {
           const result = pixels ? analyzePixels(pixels, previousLumaRef.current) : null;
           const currentMetrics = injectedMetrics ?? result!.metrics;
@@ -312,7 +340,7 @@ export function CameraCapture(props: Props) {
     <div className="camera-stage">{props.stream ? <>
       <video ref={videoRef} autoPlay muted playsInline className="camera-video" aria-label="Live camera preview" />
       <canvas ref={previewCanvasRef} className={`camera-preview-canvas${canvasPreviewActive ? " active" : ""}`} aria-hidden="true" />
-      <div className="scan-guide" aria-hidden="true"><i /><i /><i /><i /></div>
+      <div ref={guideRef} className="scan-guide" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className={`capture-readiness ${machine.status}`} role="status">
         <span>{status}</span>
         {props.autoEnabled && <progress max="1" value={machine.progress} aria-label="Auto-capture hold progress" />}
@@ -350,6 +378,10 @@ export function CameraCapture(props: Props) {
         resetMotion: AUTO_CAPTURE_CONFIG.resetMotion,
         warningMinAlignment: AUTO_CAPTURE_CONFIG.warningMinAlignment,
         hardMinAlignment: AUTO_CAPTURE_CONFIG.hardMinAlignment,
+        warningMinFaceStructure: AUTO_CAPTURE_CONFIG.warningMinFaceStructure,
+        hardMinFaceStructure: AUTO_CAPTURE_CONFIG.hardMinFaceStructure,
+        warningMaxStickerVariation: AUTO_CAPTURE_CONFIG.warningMaxStickerVariation,
+        hardMaxStickerVariation: AUTO_CAPTURE_CONFIG.hardMaxStickerVariation,
       },
       decision: {
         blockingReason: machine.blockingReason,

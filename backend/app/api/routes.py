@@ -13,7 +13,7 @@ from app.cube.moves import apply_move
 from app.cube.solver import get_solver
 from app.cube.validation import validate_facelets
 from app.sessions.store import Session, store
-from app.vision.colors import classify_provisional, classify_samples
+from app.vision.colors import CANONICAL_HEX, classify_provisional, classify_samples
 from app.vision.processing import (
     MAX_UPLOAD_BYTES,
     ImageProcessingError,
@@ -81,10 +81,11 @@ def _face_preview(
 ) -> CapturedFacePreviewResponse:
     samples = processed.samples
     predicted, confidence = classify_provisional(samples)
+    display_colors = final_colors or predicted
     return CapturedFacePreviewResponse(
         face=face,
-        preview_hex=[sample.preview_hex for sample in samples],
-        predicted_colors=final_colors or predicted,
+        preview_hex=[CANONICAL_HEX[color] for color in display_colors],
+        predicted_colors=display_colors,
         confidence=final_confidence or confidence,
         provisional=final_colors is None,
         warnings=list(processed.quality.warnings),
@@ -173,6 +174,8 @@ async def upload_face(
 
 
 def _capture_readiness(quality: QualityReport, acceptable: bool) -> tuple[str, str]:
+    if "not_cube" in quality.blocking_reasons:
+        return "not_cube", "Center one complete 2x2 face, including its black border and cross."
     if "too_dark" in quality.blocking_reasons:
         return "too_dark", "The sticker regions are nearly black; add some light and try again."
     if "glare" in quality.blocking_reasons:

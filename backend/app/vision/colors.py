@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from itertools import permutations
 
-import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
@@ -11,21 +10,36 @@ from app.cube.model import CORNER_FACELETS, FACE_ORDER, OPPOSITE_COLOR, Color, F
 
 from .processing import StickerSample
 
-
-def _rgb_to_lab(rgb: tuple[int, int, int]) -> np.ndarray:
-    pixel = np.array([[rgb[::-1]]], dtype=np.uint8)
-    lab = cv2.cvtColor(pixel, cv2.COLOR_BGR2LAB)[0, 0].astype(float)
-    return np.array((lab[0] * 100 / 255, lab[1] - 128, lab[2] - 128))
-
-
-REFERENCE_LAB = {
-    Color.RED: _rgb_to_lab((200, 35, 45)),
-    Color.ORANGE: _rgb_to_lab((245, 125, 30)),
-    Color.WHITE: _rgb_to_lab((235, 235, 225)),
-    Color.YELLOW: _rgb_to_lab((245, 215, 25)),
-    Color.GREEN: _rgb_to_lab((25, 155, 80)),
-    Color.BLUE: _rgb_to_lab((25, 90, 190)),
+# Fixed display colors. Camera samples are never exposed as the recognized UI color.
+CANONICAL_HEX: dict[Color, str] = {
+    Color.RED: "#e84255",
+    Color.BLUE: "#3e88e9",
+    Color.ORANGE: "#f39b38",
+    Color.WHITE: "#edf0e8",
+    Color.GREEN: "#38bf83",
+    Color.YELLOW: "#f1d54c",
 }
+
+# Median CIE Lab values measured from the six supplied photos after locating the
+# black 2x2 body and sampling the center of each sticker. Lightness receives a
+# smaller distance weight below so shadows and glossy highlights do not move a
+# sticker into another physical color class.
+REFERENCE_LAB = {
+    Color.RED: np.array((35.9, 59.8, 38.5)),
+    Color.ORANGE: np.array((51.1, 48.2, 56.2)),
+    Color.WHITE: np.array((71.5, 0.2, 10.0)),
+    Color.YELLOW: np.array((68.3, -0.5, 71.2)),
+    Color.GREEN: np.array((47.2, -43.0, 31.0)),
+    Color.BLUE: np.array((34.2, 7.0, -40.0)),
+}
+LAB_DISTANCE_WEIGHTS = np.array((0.45, 1.0, 1.0))
+
+
+def _color_distances(values: np.ndarray, references: np.ndarray) -> np.ndarray:
+    return np.linalg.norm(
+        (values[:, None, :] - references[None, :, :]) * LAB_DISTANCE_WEIGHTS,
+        axis=2,
+    )
 
 
 def classify_provisional(
@@ -35,7 +49,7 @@ def classify_provisional(
     colors = tuple(Color)
     references = np.array([REFERENCE_LAB[color] for color in colors])
     values = np.array([sample.lab for sample in samples], dtype=float)
-    distances = np.linalg.norm(values[:, None, :] - references[None, :, :], axis=2)
+    distances = _color_distances(values, references)
     labels: list[Color] = []
     confidence: list[float] = []
     for index, sample in enumerate(samples):
@@ -45,7 +59,7 @@ def classify_provisional(
             (distances[index, order[1]] - distances[index, order[0]])
             / max(distances[index, order[1]], 1.0)
         )
-        consistency_penalty = min(0.5, sample.consistency / 50)
+        consistency_penalty = min(0.3, sample.consistency / 120)
         confidence.append(round(max(0.0, min(1.0, margin - consistency_penalty)), 3))
     return labels, confidence
 
@@ -84,7 +98,9 @@ def _label_clusters(assignment: np.ndarray, centroids: np.ndarray) -> dict[int, 
     best: dict[int, Color] | None = None
     for candidate in permutations(colors):
         reference_cost = sum(
-            float(np.linalg.norm(centroids[cluster] - REFERENCE_LAB[color]))
+            float(
+                np.linalg.norm((centroids[cluster] - REFERENCE_LAB[color]) * LAB_DISTANCE_WEIGHTS)
+            )
             for cluster, color in enumerate(candidate)
         )
         opposite_penalty = 0.0
@@ -120,6 +136,6 @@ def classify_samples(
             facelets[face].append(labels[cluster])
             ranked = np.sort(distances[index])
             margin = float((ranked[1] - ranked[0]) / max(ranked[1], 1.0))
-            consistency_penalty = min(0.5, ordered[index].consistency / 50)
+            consistency_penalty = min(0.3, ordered[index].consistency / 120)
             confidence[face].append(round(max(0.0, min(1.0, margin - consistency_penalty)), 3))
     return facelets, confidence

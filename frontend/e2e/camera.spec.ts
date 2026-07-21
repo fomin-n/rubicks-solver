@@ -75,6 +75,10 @@ async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
         quadrantConsistency: 8.133353736362773,
         boundaryStrength: 4.666666666666667,
         alignmentScore: 0.5896960587741086,
+        borderDarkFraction: 0.53,
+        separatorDarkFraction: 0.95,
+        stickerDarkFraction: 0,
+        faceStructureScore: 0.72,
       }),
       captureBlob: () => new Promise<Blob>((resolve) => {
         const output = document.createElement("canvas");
@@ -129,6 +133,7 @@ async function scanGeometry(page: Page): Promise<ScanGeometry> {
     const guide = rectangle(".scan-guide");
     const readiness = rectangle(".capture-readiness");
     if (guide && readiness) {
+      if (guide.width > Math.min(stage.width, stage.height) * 0.4) throw new Error("Cube guide was not reduced to the smaller ROI");
       const overlaps = readiness.x < guide.x + guide.width && readiness.x + readiness.width > guide.x
         && readiness.y < guide.y + guide.height && readiness.y + readiness.height > guide.y;
       if (overlaps) throw new Error("Capture status overlaps the cube guide");
@@ -191,7 +196,9 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
 
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Captured faces", { exact: true })).toBeVisible();
+  await expect(page.locator(".captured-faces.compact article.captured-face")).toHaveCount(6);
   await expect(page.getByLabel("F recognized sticker preview").locator("span")).toHaveCount(4);
+  await expect(page.getByLabel("F recognized sticker preview").locator("span").first()).toHaveCSS("--preview-color", "#e84255");
   const stableGeometry = await scanGeometry(page);
   await page.getByText("Capture diagnostics", { exact: true }).click();
   await expect(page.getByText("smoothedMotion", { exact: false })).toBeVisible();

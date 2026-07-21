@@ -18,6 +18,10 @@ const ready: CaptureMetrics = {
   quadrantConsistency: 8,
   boundaryStrength: 30,
   alignmentScore: 0.8,
+  borderDarkFraction: 0.82,
+  separatorDarkFraction: 0.9,
+  stickerDarkFraction: 0.01,
+  faceStructureScore: 0.81,
 };
 const usableLowLight: CaptureMetrics = {
   ...ready,
@@ -40,6 +44,10 @@ const physicalFrameA: CaptureMetrics = {
   quadrantConsistency: 8.133353736362773,
   boundaryStrength: 4.666666666666667,
   alignmentScore: 0.5896960587741086,
+  borderDarkFraction: 0.53,
+  separatorDarkFraction: 0.95,
+  stickerDarkFraction: 0,
+  faceStructureScore: 0.72,
 };
 
 const physicalFrameB: CaptureMetrics = {
@@ -54,6 +62,10 @@ const physicalFrameB: CaptureMetrics = {
   quadrantConsistency: 19.956319116491706,
   boundaryStrength: 6.308333333333334,
   alignmentScore: 0.5523727918947346,
+  borderDarkFraction: 0.47,
+  separatorDarkFraction: 0.89,
+  stickerDarkFraction: 0,
+  faceStructureScore: 0.66,
 };
 
 describe("auto capture state machine", () => {
@@ -192,5 +204,24 @@ describe("auto capture state machine", () => {
     expect(evaluateMetrics({ ...ready, sharpness: 3, boundaryStrength: 2, alignmentScore: 0.2 }).blockingReason).toBe("move_closer");
     expect(evaluateMetrics({ ...ready, alignmentScore: 0.2 }).blockingReason).toBe("center_cube");
     expect(evaluateMetrics({ ...ready, motion: 14 }).blockingReason).toBe("hold_steady");
+  });
+
+  it("rejects a stable unrelated object without the black 2x2 frame", () => {
+    const unrelated = {
+      ...ready,
+      borderDarkFraction: 0.02,
+      separatorDarkFraction: 0.04,
+      stickerDarkFraction: 0,
+      faceStructureScore: 0.03,
+    };
+    expect(evaluateMetrics(unrelated)).toEqual({
+      acceptable: false,
+      blockingReason: "center_cube",
+      warnings: [],
+    });
+  });
+
+  it("rejects highly inconsistent regions even when dark lines resemble a cross", () => {
+    expect(evaluateMetrics({ ...ready, quadrantConsistency: 85 }).blockingReason).toBe("center_cube");
   });
 });

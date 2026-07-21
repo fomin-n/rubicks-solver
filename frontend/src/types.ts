@@ -4,6 +4,14 @@ export const SCAN_ORDER = ["F", "R", "B", "L", "U", "D"] as const;
 
 export const COLORS = ["red", "blue", "orange", "white", "green", "yellow"] as const;
 export type CubeColor = (typeof COLORS)[number];
+export const CANONICAL_COLOR_HEX: Record<CubeColor, string> = {
+  red: "#e84255",
+  blue: "#3e88e9",
+  orange: "#f39b38",
+  white: "#edf0e8",
+  green: "#38bf83",
+  yellow: "#f1d54c",
+};
 export type Facelets = Record<Face, CubeColor[]>;
 
 export interface SessionResponse {
@@ -75,6 +83,10 @@ export interface UploadResponse {
     stickerMedianBrightness: number;
     overexposedFraction: number;
     glareFraction: number;
+    borderDarkFraction: number;
+    separatorDarkFraction: number;
+    stickerDarkFraction: number;
+    faceStructureScore: number;
     warnings: string[];
     warningCodes: string[];
     blockingReasons: string[];

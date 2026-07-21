@@ -23,6 +23,10 @@ export const AUTO_CAPTURE_CONFIG = {
   warningMinAlignment: 0.55,
   hardMinAlignment: 0.42,
   moveCloserAlignment: 0.32,
+  warningMinFaceStructure: 0.40,
+  hardMinFaceStructure: 0.28,
+  warningMaxStickerVariation: 48,
+  hardMaxStickerVariation: 70,
 } as const;
 
 export interface CaptureMetrics {
@@ -37,6 +41,10 @@ export interface CaptureMetrics {
   quadrantConsistency: number;
   boundaryStrength: number;
   alignmentScore: number;
+  borderDarkFraction: number;
+  separatorDarkFraction: number;
+  stickerDarkFraction: number;
+  faceStructureScore: number;
 }
 
 export type ReadinessCode =
@@ -132,6 +140,21 @@ export function evaluateMetrics(metrics: CaptureMetrics, motion = metrics.motion
     metrics.brightness > AUTO_CAPTURE_CONFIG.maxBrightness ||
     metrics.glareFraction > AUTO_CAPTURE_CONFIG.maxGlareFraction
   ) return { acceptable: false, blockingReason: "reduce_glare", warnings };
+  if (metrics.faceStructureScore < AUTO_CAPTURE_CONFIG.hardMinFaceStructure) {
+    return { acceptable: false, blockingReason: "center_cube", warnings };
+  }
+  if (metrics.faceStructureScore < AUTO_CAPTURE_CONFIG.warningMinFaceStructure) {
+    warnings.push("slightly_off_center");
+  }
+  if (metrics.quadrantConsistency > AUTO_CAPTURE_CONFIG.hardMaxStickerVariation) {
+    return { acceptable: false, blockingReason: "center_cube", warnings };
+  }
+  if (
+    metrics.quadrantConsistency > AUTO_CAPTURE_CONFIG.warningMaxStickerVariation
+    && !warnings.includes("slightly_off_center")
+  ) {
+    warnings.push("slightly_off_center");
+  }
 
   const hasUsableDetail = metrics.sharpness >= AUTO_CAPTURE_CONFIG.warningMinSharpness
     || metrics.boundaryStrength >= AUTO_CAPTURE_CONFIG.usableBoundaryStrength;
@@ -151,7 +174,10 @@ export function evaluateMetrics(metrics: CaptureMetrics, motion = metrics.motion
   if (metrics.alignmentScore < AUTO_CAPTURE_CONFIG.hardMinAlignment) {
     return { acceptable: false, blockingReason: "center_cube", warnings };
   }
-  if (metrics.alignmentScore < AUTO_CAPTURE_CONFIG.warningMinAlignment) {
+  if (
+    metrics.alignmentScore < AUTO_CAPTURE_CONFIG.warningMinAlignment
+    && !warnings.includes("slightly_off_center")
+  ) {
     warnings.push("slightly_off_center");
   }
   if (motion > AUTO_CAPTURE_CONFIG.stableMotion) {

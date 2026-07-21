@@ -8,6 +8,7 @@ export interface FrameAnalysis {
 export const STICKER_ROI_MARGIN = 0.2;
 const MOTION_BLOCK_SIZE = 6;
 const MOTION_NOISE_FLOOR = 2;
+const BLACK_PLASTIC_VALUE_MAX = 65;
 
 function histogramPercentile(histogram: Uint32Array, count: number, percentile: number): number {
   const target = Math.max(0, Math.ceil(count * percentile) - 1);
@@ -30,6 +31,11 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
   let stickerCount = 0;
   let gradients = 0;
   let gradientCount = 0;
+  let borderBlack = 0;
+  let borderCount = 0;
+  let separatorBlack = 0;
+  let separatorCount = 0;
+  let stickerBlack = 0;
   const quadrantTotals = [0, 0, 0, 0];
   const quadrantSquares = [0, 0, 0, 0];
   const quadrantCounts = [0, 0, 0, 0];
@@ -37,6 +43,8 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
   const stickerHistogram = new Uint32Array(256);
   const cellSize = side / 2;
   const roiMargin = cellSize * STICKER_ROI_MARGIN;
+  const borderWidth = side * 0.06;
+  const separatorHalfWidth = side * 0.035;
 
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const offset = pixel * 4;
@@ -46,6 +54,19 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     if (value < 25) fullDark += 1;
     const row = Math.floor(pixel / side);
     const column = pixel % side;
+    const isBlackPlastic = Math.max(data[offset], data[offset + 1], data[offset + 2]) < BLACK_PLASTIC_VALUE_MAX;
+    const inBorder = row < borderWidth || row >= side - borderWidth
+      || column < borderWidth || column >= side - borderWidth;
+    const inSeparator = Math.abs(row - side / 2) < separatorHalfWidth
+      || Math.abs(column - side / 2) < separatorHalfWidth;
+    if (inBorder) {
+      borderCount += 1;
+      if (isBlackPlastic) borderBlack += 1;
+    }
+    if (inSeparator && !inBorder) {
+      separatorCount += 1;
+      if (isBlackPlastic) separatorBlack += 1;
+    }
     const quadrant = (row >= side / 2 ? 2 : 0) + (column >= side / 2 ? 1 : 0);
     const localRow = row % cellSize;
     const localColumn = column % cellSize;
@@ -54,6 +75,7 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     if (inStickerRoi) {
       stickerCount += 1;
       if (value < 25) stickerDark += 1;
+      if (isBlackPlastic) stickerBlack += 1;
       if (Math.max(data[offset], data[offset + 1], data[offset + 2]) > 248) stickerGlare += 1;
       stickerHistogram[value] += 1;
       quadrantHistograms[quadrant][value] += 1;
@@ -107,7 +129,17 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
     const mean = value / quadrantCounts[index];
     return sum + Math.sqrt(Math.max(0, quadrantSquares[index] / quadrantCounts[index] - mean * mean));
   }, 0) / 4;
-  const alignmentScore = Math.max(0, Math.min(1, 0.58 + boundaryStrength / 100 - quadrantConsistency / 220));
+  const borderDarkFraction = borderBlack / Math.max(1, borderCount);
+  const separatorDarkFraction = separatorBlack / Math.max(1, separatorCount);
+  const stickerDarkFraction = stickerBlack / Math.max(1, stickerCount);
+  const faceStructureScore = Math.max(0, Math.min(
+    1,
+    0.42 * borderDarkFraction + 0.52 * separatorDarkFraction - 0.28 * stickerDarkFraction,
+  ));
+  const alignmentScore = Math.max(0, Math.min(
+    1,
+    0.43 + boundaryStrength / 100 - quadrantConsistency / 220 + faceStructureScore * 0.28,
+  ));
   return {
     luma: motionLuma,
     metrics: {
@@ -122,6 +154,10 @@ export function analyzePixels(data: Uint8ClampedArray, previous?: Uint8Array): F
       quadrantConsistency,
       boundaryStrength,
       alignmentScore,
+      borderDarkFraction,
+      separatorDarkFraction,
+      stickerDarkFraction,
+      faceStructureScore,
     },
   };
 }

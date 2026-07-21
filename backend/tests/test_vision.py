@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 from PIL import Image
 
+from app.vision.colors import CANONICAL_HEX, classify_provisional
 from app.vision.processing import ImageProcessingError, process_face_image
 
 
@@ -16,7 +18,10 @@ def _face_image(exposure: float = 1.0) -> bytes:
     for index, color in enumerate(colors):
         row, column = divmod(index, 2)
         adjusted = np.clip(np.asarray(color) * exposure, 0, 255).astype(np.uint8)
-        image[row * 300 : (row + 1) * 300, column * 300 : (column + 1) * 300] = adjusted
+        image[
+            row * 300 + 36 : (row + 1) * 300 - 36,
+            column * 300 + 36 : (column + 1) * 300 - 36,
+        ] = adjusted
     ok, encoded = cv2.imencode(".png", image)
     assert ok
     return encoded.tobytes()
@@ -86,6 +91,32 @@ def test_structured_quality_codes_are_deduplicated():
     processed = process_face_image(_face_image(0.35))
     assert len(processed.quality.warning_codes) == len(set(processed.quality.warning_codes))
     assert "low_light" in processed.quality.warning_codes
+
+
+@pytest.mark.parametrize("expected", ["green", "white", "blue", "yellow", "orange", "red"])
+def test_supplied_reference_photo_recognizes_four_canonical_stickers(expected: str):
+    fixture = Path(__file__).parents[2] / "test-data" / "reference-cube" / f"{expected}.jpg"
+    processed = process_face_image(fixture.read_bytes())
+    labels, confidence = classify_provisional(processed.samples)
+
+    assert [label.value for label in labels] == [expected] * 4
+    assert [CANONICAL_HEX[label] for label in labels] == [CANONICAL_HEX[labels[0]]] * 4
+    assert min(confidence) >= 0.25
+    assert processed.quality.face_structure_score >= 0.5
+    assert processed.quality.sticker_dark_fraction < 0.05
+    assert "not_cube" not in processed.quality.blocking_reasons
+    assert not processed.quality.retake_recommended
+
+
+def test_light_background_without_black_2x2_structure_is_rejected():
+    image = np.full((600, 600, 3), (205, 190, 175), dtype=np.uint8)
+    image[:, 280:320] = (160, 145, 130)
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+
+    processed = process_face_image(encoded.tobytes())
+    assert processed.quality.face_structure_score < 0.3
+    assert "not_cube" in processed.quality.blocking_reasons
 
 
 def test_rejects_invalid_image():

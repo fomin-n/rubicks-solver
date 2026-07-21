@@ -26,6 +26,7 @@ describe("capture analyzer lighting ROI", () => {
     const analysis = analyzePixels(pixels, analyzePixels(pixels).luma);
     expect(analysis.metrics.fullCropDarkFraction).toBeGreaterThan(0.5);
     expect(analysis.metrics.darkFraction).toBeLessThan(0.05);
+    expect(analysis.metrics.faceStructureScore).toBeGreaterThan(AUTO_CAPTURE_CONFIG.hardMinFaceStructure);
     expect(analysis.metrics.brightness).toBeGreaterThan(AUTO_CAPTURE_CONFIG.hardMinBrightness);
     const evaluation = evaluateMetrics({ ...analysis.metrics, sharpness: 24, alignmentScore: 0.8 });
     expect(evaluation.blockingReason).not.toBe("too_dark");
@@ -37,5 +38,18 @@ describe("capture analyzer lighting ROI", () => {
     expect(analysis.metrics.brightness).toBeLessThan(AUTO_CAPTURE_CONFIG.hardMinBrightness);
     expect(analysis.metrics.darkFraction).toBeGreaterThan(0.9);
     expect(evaluateMetrics({ ...analysis.metrics, sharpness: 24, alignmentScore: 0.8 }).blockingReason).toBe("too_dark");
+  });
+
+  it("rejects a uniform hand/background region without black face geometry", () => {
+    const pixels = new Uint8ClampedArray(240 * 240 * 4);
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      pixels[offset] = 205;
+      pixels[offset + 1] = 160;
+      pixels[offset + 2] = 140;
+      pixels[offset + 3] = 255;
+    }
+    const analysis = analyzePixels(pixels, analyzePixels(pixels).luma);
+    expect(analysis.metrics.faceStructureScore).toBeLessThan(AUTO_CAPTURE_CONFIG.hardMinFaceStructure);
+    expect(evaluateMetrics({ ...analysis.metrics, sharpness: 24, motion: 0 }).blockingReason).toBe("center_cube");
   });
 });

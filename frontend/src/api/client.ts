@@ -35,6 +35,8 @@ const uploadSchema = z.object({
     blurScore: z.number(), boundaryScore: z.number(), underexposedFraction: z.number(),
     fullImageUnderexposedFraction: z.number(), stickerMedianBrightness: z.number(),
     overexposedFraction: z.number(), glareFraction: z.number(), warnings: z.array(z.string()),
+    borderDarkFraction: z.number(), separatorDarkFraction: z.number(),
+    stickerDarkFraction: z.number(), faceStructureScore: z.number(),
     warningCodes: z.array(z.string()),
     blockingReasons: z.array(z.string()), retakeRecommended: z.boolean(),
   }),

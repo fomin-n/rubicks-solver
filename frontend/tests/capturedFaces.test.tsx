@@ -20,6 +20,7 @@ it("shows four immediate swatches per face and retakes only the selected face", 
   const articles = screen.getAllByRole("article");
   expect(articles).toHaveLength(2);
   expect(within(articles[0]).getByLabelText("F recognized sticker preview").children).toHaveLength(4);
+  expect((within(articles[0]).getByLabelText("F recognized sticker preview").children[0] as HTMLElement).style.getPropertyValue("--preview-color")).toBe("#e84255");
   expect(within(articles[1]).getByText("Final")).toBeInTheDocument();
   fireEvent.click(within(articles[0]).getByRole("button", { name: "Retake" }));
   expect(onRetake).toHaveBeenCalledWith("F");
@@ -30,6 +31,8 @@ it("shows four immediate swatches per face and retakes only the selected face", 
 it("uses the fixed compact dock treatment while scanning", () => {
   render(<CapturedFaces compact previews={{ F: preview("F") }} busy={false} onRetake={vi.fn()} />);
   expect(screen.getByLabelText("Captured faces")).toHaveClass("compact");
+  expect(screen.getAllByRole("article")).toHaveLength(6);
+  expect(screen.getByLabelText("R not captured")).toBeInTheDocument();
   expect(screen.getByLabelText("F recognized sticker preview").children).toHaveLength(4);
   expect(screen.getByRole("button", { name: "Retake" })).toBeEnabled();
 });

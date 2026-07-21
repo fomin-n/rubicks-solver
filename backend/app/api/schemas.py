@@ -50,6 +50,10 @@ class QualityResponse(ApiModel):
     sticker_median_brightness: float
     overexposed_fraction: float
     glare_fraction: float
+    border_dark_fraction: float
+    separator_dark_fraction: float
+    sticker_dark_fraction: float
+    face_structure_score: float
     warnings: list[str]
     warning_codes: list[str]
     blocking_reasons: list[str]

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { SCAN_ORDER, type CapturedFacePreview, type Face } from "../types";
+import { CANONICAL_COLOR_HEX, SCAN_ORDER, type CapturedFacePreview, type Face } from "../types";
 
 interface Props {
   previews: Partial<Record<Face, CapturedFacePreview>>;
@@ -12,12 +12,17 @@ interface Props {
 
 export function CapturedFaces({ previews, activeFace, problemFaces = [], compact = false, busy, onRetake }: Props) {
   const captured = SCAN_ORDER.filter((face) => previews[face]);
-  if (!captured.length) return null;
+  if (!compact && !captured.length) return null;
+  const visibleFaces = compact ? SCAN_ORDER : captured;
   return <section className={`captured-faces${compact ? " compact" : ""}`} aria-label="Captured faces">
     <div className="captured-faces-heading"><strong>Captured faces</strong><span>{captured.length} / 6</span></div>
     <div className="captured-face-strip">
-      {captured.map((face) => {
-        const preview = previews[face]!;
+      {visibleFaces.map((face) => {
+        const preview = previews[face];
+        if (!preview) return <article key={face} className="captured-face pending" data-face={face} aria-label={`${face} not captured`}>
+          <header><strong>{face}</strong><span>Pending</span></header>
+          <div className="captured-face-placeholder" aria-hidden="true"><i /><i /><i /><i /></div>
+        </article>;
         const lowConfidence = preview.confidence.some((value) => value < 0.25);
         const problematic = problemFaces.includes(face);
         return <article
@@ -27,7 +32,7 @@ export function CapturedFaces({ previews, activeFace, problemFaces = [], compact
         >
           <header><strong>{face}</strong><span>{preview.provisional ? "Provisional" : "Final"}</span></header>
           <div className="captured-face-grid" aria-label={`${face} recognized sticker preview`}>
-            {preview.previewHex.map((hex, index) => <span key={`${hex}-${index}`} style={{ "--preview-color": hex } as CSSProperties} title={preview.predictedColors[index] ?? "Unclassified"} />)}
+            {preview.predictedColors.map((color, index) => <span key={`${color}-${index}`} style={{ "--preview-color": color ? CANONICAL_COLOR_HEX[color] : "#343a48" } as CSSProperties} title={color ?? "Unclassified"} />)}
           </div>
           <div className="captured-color-labels">{preview.predictedColors.map((color, index) => <span key={`${color}-${index}`}>{color ?? "?"}</span>)}</div>
           {(preview.warningCodes.length > 0 || lowConfidence || problematic) && <small>{problematic ? "Check this face" : lowConfidence ? "Low confidence" : "Usable with warning"}</small>}

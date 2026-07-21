@@ -8,6 +8,7 @@ from app.cube.facelets import state_to_facelets
 from app.cube.model import SOLVED_STATE, Color, Face
 from app.cube.moves import MOVE_BY_NOTATION, apply_sequence
 from app.main import app
+from app.vision.colors import CANONICAL_HEX
 
 client = TestClient(app)
 TARGET = {
@@ -118,6 +119,9 @@ def test_six_images_are_balanced_classified_and_validated():
     assert final is not None
     assert final["scansComplete"] is True
     assert all(not preview["provisional"] for preview in final["capturedFaces"].values())
+    canonical = {color.value: value for color, value in CANONICAL_HEX.items()}
+    for preview in final["capturedFaces"].values():
+        assert preview["previewHex"] == [canonical[color] for color in preview["predictedColors"]]
     recognized = final["facelets"]
     assert sorted(color for stickers in recognized.values() for color in stickers) == sorted(
         color.value for color in Color for _ in range(4)
@@ -160,7 +164,7 @@ def test_candidate_commit_modes_are_non_destructive():
     assert rejected.status_code == 200
     assert rejected.json()["acceptable"] is False
     assert rejected.json()["committed"] is False
-    assert rejected.json()["readinessCode"] == "blurry"
+    assert rejected.json()["readinessCode"] == "not_cube"
     assert client.get(f"/api/sessions/{session_id}").json()["scannedFaces"] == []
 
     diagnostic = client.post(
