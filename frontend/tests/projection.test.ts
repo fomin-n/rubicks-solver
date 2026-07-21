@@ -27,6 +27,8 @@ describe("camera guide projection", () => {
     for (const notation of NOTATIONS) {
       const geometry = arrowGeometry(move(notation));
       expect(geometry.path).toMatch(/^M/);
+      expect(geometry.path).toContain(" C");
+      expect(geometry.path).not.toContain(" L");
       expect(geometry.sweepSign).toBe(notation.endsWith("'") ? -1 : 1);
       expect(geometry.halfTurn).toBe(notation.endsWith("2"));
     }
@@ -35,13 +37,8 @@ describe("camera guide projection", () => {
   it.each(["U", "R", "F"] as const)("reverses the %s path and its end arrowhead for the prime move", (face) => {
     const clockwise = arrowGeometry(move(face));
     const counterclockwise = arrowGeometry(move(`${face}'`));
-    const clockwisePoints = clockwise.path.match(/[ML][\d.]+ [\d.]+/g);
-    const counterclockwisePoints = counterclockwise.path.match(/[ML][\d.]+ [\d.]+/g);
-    expect(clockwisePoints).not.toBeNull();
-    expect(counterclockwisePoints).not.toBeNull();
-    const coordinates = (point: string) => point.slice(1);
-    expect(coordinates(counterclockwisePoints![0])).toBe(coordinates(clockwisePoints!.at(-1)!));
-    expect(coordinates(counterclockwisePoints!.at(-1)!)).toBe(coordinates(clockwisePoints![0]));
+    expect(counterclockwise.start).toEqual(clockwise.end);
+    expect(counterclockwise.end).toEqual(clockwise.start);
     expect(counterclockwise.sweepSign).toBe(-clockwise.sweepSign);
   });
 

@@ -45,6 +45,8 @@ describe("solved camera celebration", () => {
     expect(banner).toHaveClass("solved-banner");
     expect(banner.parentElement).toHaveClass("solution-video", "solved-video");
     expect(screen.getByRole("heading", { name: "Cube solved! 🎉" })).toBeVisible();
+    expect(screen.getByText("5 moves", { exact: true })).toBeVisible();
+    expect(screen.queryByText(/camera stays live/)).not.toBeInTheDocument();
     expect(document.querySelectorAll(".confetti-piece")).toHaveLength(12);
     expect(screen.getByRole("button", { name: "Solve another cube" })).toBeVisible();
     act(() => vi.advanceTimersByTime(1_500));

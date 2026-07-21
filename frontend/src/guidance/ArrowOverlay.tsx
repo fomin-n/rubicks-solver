@@ -7,9 +7,11 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
   const faces = Object.keys(FACE_QUADS) as VisibleFace[];
   return <svg className={`guidance-overlay${calibration ? " calibration" : ""}`} viewBox="0 0 360 310" role="img" aria-label={calibration ? "Colored Up Front Right orientation guide" : move.description}>
     <defs>
-      <marker id="arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-        <path className="arrow-head-outline" d="M1 1 L8 5 L1 9" />
-        <path className="arrow-head-tip" d="M1 1 L8 5 L1 9" />
+      <marker id="arrow-head-outline" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+        <path className="arrow-marker-outline" d="M1.5 1.5 L10 6 L1.5 10.5" />
+      </marker>
+      <marker id="arrow-head" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+        <path className="arrow-marker-fill" d="M1.5 1.5 L10 6 L1.5 10.5" />
       </marker>
     </defs>
     {faces.flatMap((face) => faceletPolygons(face).map((points, index) => <polygon
@@ -23,7 +25,7 @@ export function ArrowOverlay({ move, facelets, calibration = false }: { move: Cu
     {!calibration && <polygon points={pointsAttribute([...FACE_QUADS[move.face]])} className="active-face-wash" data-active-face={move.face} />}
     {faces.map((face) => <polygon key={`${face}-outline`} points={pointsAttribute([...FACE_QUADS[face]])} className={`guide-face-outline ${face === move.face && !calibration ? "active" : ""}`} />)}
     {!calibration && <g className="turn-guidance" data-face={move.face} data-direction={arrow.direction} data-half-turn={arrow.halfTurn}>
-      <path d={arrow.path} className="turn-arrow-outline" />
+      <path d={arrow.path} className="turn-arrow-outline" markerEnd="url(#arrow-head-outline)" />
       <path d={arrow.path} className="turn-arrow" markerEnd="url(#arrow-head)" />
       <path d={arrow.path} className="turn-arrow-highlight" />
       {arrow.halfTurn && <g className="half-turn-badge" aria-label="180 degree turn"><rect x={arrow.badge.x - 24} y={arrow.badge.y - 11} width="48" height="22" rx="11" /><text className="half-turn-label" x={arrow.badge.x} y={arrow.badge.y + 6}>180°</text></g>}

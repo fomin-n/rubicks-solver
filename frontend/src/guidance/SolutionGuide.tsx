@@ -92,7 +92,7 @@ export function SolutionGuide(props: Props) {
   return <section className="solution-layout">
     <div className="solution-camera panel">
       <div className="solution-video">
-        {props.stream ? <LiveCameraVideo stream={props.stream} label="Live solution camera" onPlaybackProblem={props.onPlaybackProblem} /> : <div className="camera-placeholder guidance-bg">Use the fixed guide without a camera, or start the live preview.</div>}
+        {props.stream ? <LiveCameraVideo stream={props.stream} label="Live solution camera" onPlaybackProblem={props.onPlaybackProblem} /> : <div className="camera-placeholder guidance-bg">Position the cube to match the guide.</div>}
         <ArrowOverlay move={props.move} facelets={props.facelets} calibration={!props.guidanceReady} />
         {!props.guidanceReady && <div className="orientation-calibration"><strong>Match the colored U/F/R ghost</strong><span>Keep Front facing you, Up above, and Right on your right.</span></div>}
       </div>
@@ -102,10 +102,9 @@ export function SolutionGuide(props: Props) {
         {props.stream && <button className="primary" onClick={props.onOrientationMatched}>Orientation matched</button>}
         <button onClick={props.onContinueWithoutCamera}>Continue without camera</button>
       </div>}
-      <p className="privacy-note">Colors show the current server-authoritative cube state. Guidance advances by timer or confirmation; hands and turns are not tracked.</p>
     </div>
     <div className="move-card panel">
-      <div className="formula-header"><span className="eyebrow">Full solution · {props.solution.metric}</span><button onClick={() => void copyFormula()}>{copied ? "Copied" : "Copy formula"}</button></div>
+      <div className="formula-header"><span className="eyebrow">Full solution</span><button onClick={() => void copyFormula()}>{copied ? "Copied" : "Copy formula"}</button></div>
       <ol className="formula" aria-label="Full solution formula">{props.solution.moves.map((item, index) => <li key={`${item.notation}-${index}`} className={index < props.completed ? "completed" : index === props.completed && props.mode === "solve" ? "current" : "remaining"}>{item.notation}</li>)}</ol>
       {!props.guidanceReady ? <div className="calibration-copy"><span className="eyebrow">Orientation setup</span><h1>Align the cube before move 1</h1><p>The colored ghost matches the cube state you scanned. This whole-cube positioning costs zero moves.</p></div> : <>
         <span className="eyebrow">{props.mode === "solve" ? `Move ${props.completed + 1} of ${props.solution.moveCount}` : props.mode === "undo" ? "Undo previous move" : `Returning to start · ${props.completed} remaining`}</span>

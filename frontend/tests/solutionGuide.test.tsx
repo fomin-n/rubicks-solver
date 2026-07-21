@@ -58,6 +58,9 @@ describe("solution move progression", () => {
   it("defaults to automatic mode and advances once after a visible three-second countdown", () => {
     const onDone = vi.fn();
     render(<SolutionGuide {...props({ onDone })} />);
+    expect(screen.getByText("Full solution")).toBeVisible();
+    expect(screen.queryByText(/server-authoritative cube state/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/hands and turns are not tracked/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Auto advance" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("status")).toHaveTextContent("Next move in 3");
     act(() => vi.advanceTimersByTime(1_000));

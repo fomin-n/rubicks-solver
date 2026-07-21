@@ -31,7 +31,7 @@ export function SolvedCamera({ stream, moveCount, onPlaybackProblem, onSolveAnot
       <div className="solution-video solved-video">
         {stream
           ? <LiveCameraVideo stream={stream} label="Live solved cube camera" onPlaybackProblem={onPlaybackProblem} />
-          : <div className="camera-placeholder guidance-bg">Your cube is solved.</div>}
+          : <div className="camera-placeholder guidance-bg" aria-hidden="true" />}
         {showConfetti && <div className="confetti" aria-hidden="true">{CONFETTI.map(([left, drift, rotation, color], index) => <i
           key={`${left}-${rotation}`}
           className="confetti-piece"
@@ -45,11 +45,10 @@ export function SolvedCamera({ stream, moveCount, onPlaybackProblem, onSolveAnot
         />)}</div>}
         <div className="solved-banner" role="status">
           <h1>Cube solved! 🎉</h1>
-          <span>{moveCount} optimal HTM moves</span>
+          <span>{moveCount} moves</span>
         </div>
       </div>
       <div className="solved-camera-actions">
-        <p>Nice work. The camera stays live so you can enjoy the solved cube.</p>
         <button className="primary large" onClick={onSolveAnother}>Solve another cube</button>
       </div>
     </div>

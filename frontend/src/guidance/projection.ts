@@ -33,10 +33,36 @@ export function faceletPolygons(face: VisibleFace): Point[][] {
 
 export interface ArrowGeometry {
   path: string;
+  start: Point;
+  end: Point;
   badge: Point;
   direction: "clockwise" | "counterclockwise" | "half";
   sweepSign: -1 | 1;
   halfTurn: boolean;
+}
+
+function roundedPoint(point: Point): string {
+  return `${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+}
+
+function smoothPath(points: Point[]): string {
+  const commands = [`M${roundedPoint(points[0])}`];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] ?? points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const after = points[index + 2] ?? next;
+    const controlOne = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: current.y + (next.y - previous.y) / 6,
+    };
+    const controlTwo = {
+      x: next.x - (after.x - current.x) / 6,
+      y: next.y - (after.y - current.y) / 6,
+    };
+    commands.push(`C${roundedPoint(controlOne)} ${roundedPoint(controlTwo)} ${roundedPoint(next)}`);
+  }
+  return commands.join(" ");
 }
 
 export function arrowGeometry(move: Pick<CubeMove, "face" | "quarterTurns">): ArrowGeometry {
@@ -51,7 +77,9 @@ export function arrowGeometry(move: Pick<CubeMove, "face" | "quarterTurns">): Ar
   });
   const points = sweepSign > 0 ? clockwisePoints : [...clockwisePoints].reverse();
   return {
-    path: points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" "),
+    path: smoothPath(points),
+    start: points[0],
+    end: points[points.length - 1],
     badge: projectPoint(FACE_QUADS[move.face], 0.5, 0.5),
     direction: halfTurn ? "half" : sweepSign > 0 ? "clockwise" : "counterclockwise",
     sweepSign,
