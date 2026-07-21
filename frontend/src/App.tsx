@@ -7,6 +7,7 @@ import { useCameraController } from "./camera/useCameraController";
 import { CubeNetEditor } from "./cube/CubeNetEditor";
 import { DEMO_FACELETS, SOLVED_FACELETS } from "./cube/cube";
 import { faceletsAtProgress, faceletsBeforeMove, inverseMove } from "./guidance/guidance";
+import { SolvedCamera } from "./guidance/SolvedCamera";
 import { SolutionGuide } from "./guidance/SolutionGuide";
 import {
   SCAN_ORDER,
@@ -189,7 +190,6 @@ export default function App() {
       return;
     }
     const next = state.moveIndex + 1;
-    if (next >= state.solution.moves.length) camera.stop();
     patch(next >= state.solution.moves.length ? { moveIndex: next, screen: "solved" } : { moveIndex: next });
   }
 
@@ -220,7 +220,7 @@ export default function App() {
       {state.screen === "recovery" && <section className="recovery panel"><div className="section-heading"><div><span className="eyebrow">Scan needs attention</span><h1>Check the highlighted faces</h1></div><p>Your other captures are preserved. Retake only a suspicious face, or open the detailed editor.</p></div><div className="recovery-errors" role="alert"><ul>{state.validation?.errors.map((issue) => <li key={`${issue.code}-${issue.face ?? "cube"}`}>{issue.message}</li>)}</ul></div><CapturedFaces previews={state.capturedFaces} problemFaces={problemFaces} busy={state.busy} onRetake={startRetake} /><div className="recovery-actions"><button className="primary" onClick={() => problemFaces[0] && startRetake(problemFaces[0])} disabled={!problemFaces.length}>Retake likely face</button><button onClick={() => patch({ screen: "verify" })}>Advanced correction</button><button onClick={() => void resetFlow()}>Start over</button></div></section>}
       {state.screen === "verify" && state.facelets && <CubeNetEditor facelets={state.facelets} confidence={state.confidence} validation={state.validation} canRetake={capturedCount > 0} busy={state.busy} onChange={(facelets) => patch({ facelets, validation: null })} onRetake={startRetake} onSolve={() => void validateAndSolve()} />}
       {state.screen === "solution" && state.solution && solutionMove && guidanceFacelets && <SolutionGuide solution={state.solution} move={solutionMove} facelets={guidanceFacelets} completed={state.guidanceMode === "restart" ? state.restartCursor : state.moveIndex} mode={state.guidanceMode} stream={camera.stream} cameraStarting={camera.starting} cameraProblem={camera.problem} guidanceReady={state.guidanceReady} onStartCamera={() => void camera.start()} onOrientationMatched={() => patch({ guidanceReady: true })} onContinueWithoutCamera={() => { camera.stop(); patch({ guidanceReady: true, cameraFree: true }); }} onPlaybackProblem={camera.reportPlaybackProblem} onDone={completeGuidanceStep} onPrevious={() => patch({ guidanceMode: "undo" })} onRestart={() => state.moveIndex > 0 && patch({ guidanceMode: "restart", restartCursor: state.moveIndex })} onRescan={() => void resetFlow()} />}
-      {state.screen === "solved" && <section className="center-card panel solved"><div className="success-mark">✓</div><span className="eyebrow">Complete</span><h1>Cube solved</h1><p>{state.solution?.moveCount ?? 0} optimal HTM moves. Nice work.</p><button className="primary large" onClick={() => void resetFlow()}>Solve another cube</button></section>}
+      {state.screen === "solved" && <SolvedCamera stream={camera.stream} moveCount={state.solution?.moveCount ?? 0} onPlaybackProblem={camera.reportPlaybackProblem} onSolveAnother={() => void resetFlow()} />}
     </main><footer><span>No accounts. No cloud. No telemetry.</span><a href="/api/health" target="_blank" rel="noreferrer">API health</a></footer></>;
 }
 

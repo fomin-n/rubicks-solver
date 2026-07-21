@@ -42,13 +42,14 @@ export interface ArrowGeometry {
 export function arrowGeometry(move: Pick<CubeMove, "face" | "quarterTurns">): ArrowGeometry {
   const halfTurn = Math.abs(move.quarterTurns) === 2;
   const sweepSign: -1 | 1 = move.quarterTurns < 0 ? -1 : 1;
-  const start = sweepSign > 0 ? -145 : 145;
-  const sweep = (halfTurn ? 205 : 150) * sweepSign;
+  const start = -145;
+  const sweep = halfTurn ? 205 : 150;
   const pointCount = halfTurn ? 26 : 20;
-  const points = Array.from({ length: pointCount }, (_, index) => {
+  const clockwisePoints = Array.from({ length: pointCount }, (_, index) => {
     const angle = (start + sweep * index / (pointCount - 1)) * Math.PI / 180;
     return projectPoint(FACE_QUADS[move.face], 0.5 + Math.cos(angle) * 0.36, 0.5 + Math.sin(angle) * 0.36);
   });
+  const points = sweepSign > 0 ? clockwisePoints : [...clockwisePoints].reverse();
   return {
     path: points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" "),
     badge: projectPoint(FACE_QUADS[move.face], 0.5, 0.5),

@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { CameraProblem } from "../camera/useCameraController";
 import type { CubeMove, Facelets, SolveResponse } from "../types";
 import { ArrowOverlay } from "./ArrowOverlay";
+import { LiveCameraVideo } from "./LiveCameraVideo";
+
+const AUTO_ADVANCE_MS = 3_000;
+type AdvanceMode = "auto" | "manual";
 
 interface Props {
   solution: SolveResponse;
@@ -24,37 +28,71 @@ interface Props {
 }
 
 export function SolutionGuide(props: Props) {
-  const { stream, onPlaybackProblem } = props;
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [copied, setCopied] = useState(false);
+  const [advanceMode, setAdvanceMode] = useState<AdvanceMode>("auto");
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const onDoneRef = useRef(props.onDone);
+  onDoneRef.current = props.onDone;
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !stream) return;
-    video.autoplay = true;
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = stream;
-    let cancelled = false;
-    const play = async () => {
-      try { await video.play(); }
-      catch { if (!cancelled) onPlaybackProblem("Safari paused the guidance camera. Tap Start camera guidance again."); }
+    const active = advanceMode === "auto" && props.guidanceReady && props.mode === "solve";
+    if (!active) {
+      setCountdown(null);
+      return;
+    }
+
+    let interval: number | null = null;
+    let remaining = AUTO_ADVANCE_MS;
+    let startedAt = Date.now();
+    const clear = () => {
+      if (interval !== null) window.clearInterval(interval);
+      interval = null;
     };
-    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) void play();
-    else video.addEventListener("loadedmetadata", () => void play(), { once: true });
-    return () => { cancelled = true; video.pause(); video.srcObject = null; };
-  }, [stream, onPlaybackProblem]);
+    const pause = () => {
+      if (interval === null) return;
+      remaining = Math.max(0, remaining - (Date.now() - startedAt));
+      clear();
+      setCountdown(Math.max(1, Math.ceil(remaining / 1_000)));
+    };
+    const tick = () => {
+      if (document.hidden) { pause(); return; }
+      const nextRemaining = remaining - (Date.now() - startedAt);
+      if (nextRemaining <= 0) {
+        clear();
+        setCountdown(null);
+        onDoneRef.current();
+        return;
+      }
+      setCountdown(Math.ceil(nextRemaining / 1_000));
+    };
+    const start = () => {
+      if (document.hidden || interval !== null) return;
+      startedAt = Date.now();
+      interval = window.setInterval(tick, 100);
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) pause();
+      else start();
+    };
+
+    setCountdown(3);
+    start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clear();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [advanceMode, props.completed, props.guidanceReady, props.mode, props.move.notation]);
 
   const copyFormula = async () => {
     await navigator.clipboard?.writeText(props.solution.moves.map((item) => item.notation).join(" "));
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_500);
   };
 
   return <section className="solution-layout">
     <div className="solution-camera panel">
       <div className="solution-video">
-        {props.stream ? <video ref={videoRef} autoPlay muted playsInline className="camera-video" aria-label="Live solution camera" /> : <div className="camera-placeholder guidance-bg">Use the fixed guide without a camera, or start the live preview.</div>}
+        {props.stream ? <LiveCameraVideo stream={props.stream} label="Live solution camera" onPlaybackProblem={props.onPlaybackProblem} /> : <div className="camera-placeholder guidance-bg">Use the fixed guide without a camera, or start the live preview.</div>}
         <ArrowOverlay move={props.move} facelets={props.facelets} calibration={!props.guidanceReady} />
         {!props.guidanceReady && <div className="orientation-calibration"><strong>Match the colored U/F/R ghost</strong><span>Keep Front facing you, Up above, and Right on your right.</span></div>}
       </div>
@@ -64,7 +102,7 @@ export function SolutionGuide(props: Props) {
         {props.stream && <button className="primary" onClick={props.onOrientationMatched}>Orientation matched</button>}
         <button onClick={props.onContinueWithoutCamera}>Continue without camera</button>
       </div>}
-      <p className="privacy-note">Colors show the current server-authoritative cube state. Turns are confirmed manually; hands and moves are not tracked.</p>
+      <p className="privacy-note">Colors show the current server-authoritative cube state. Guidance advances by timer or confirmation; hands and turns are not tracked.</p>
     </div>
     <div className="move-card panel">
       <div className="formula-header"><span className="eyebrow">Full solution · {props.solution.metric}</span><button onClick={() => void copyFormula()}>{copied ? "Copied" : "Copy formula"}</button></div>
@@ -74,8 +112,15 @@ export function SolutionGuide(props: Props) {
         <div className="notation">{props.move.notation}</div><h1>{props.move.description}</h1>
         <p>Clockwise is defined while looking directly at the highlighted face. Whole-cube positioning is not counted as a move.</p>
         <div className="progress" aria-label={`${props.completed} of ${props.solution.moveCount} moves complete`}><i style={{ width: `${props.solution.moveCount ? props.completed / props.solution.moveCount * 100 : 100}%` }} /></div>
+        <div className={`advance-status ${advanceMode}`} role="status">
+          {advanceMode === "manual" ? "Manual advance · use Done / Next" : countdown !== null ? `Next move in ${countdown}` : "Auto advance paused"}
+        </div>
         <div className="solution-actions"><button disabled={props.completed === 0 || props.mode !== "solve"} onClick={props.onPrevious}>Previous / Undo</button><button className="primary" onClick={props.onDone}>{props.mode === "solve" ? "Done / Next" : props.mode === "restart" ? "Done reversing" : "Done undoing"}</button></div>
         <div className="text-actions"><button disabled={props.completed === 0 || props.mode !== "solve"} onClick={props.onRestart}>Restart safely</button><button onClick={props.onRescan}>Rescan</button></div>
+        <div className="advance-mode-control" role="group" aria-label="Move progression mode">
+          <button type="button" aria-pressed={advanceMode === "auto"} onClick={() => setAdvanceMode("auto")}>Auto advance</button>
+          <button type="button" aria-pressed={advanceMode === "manual"} onClick={() => setAdvanceMode("manual")}>Manual advance</button>
+        </div>
       </>}
     </div>
   </section>;

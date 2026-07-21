@@ -224,6 +224,7 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   await page.getByRole("button", { name: "Orientation matched" }).click();
   const moveLabel = page.getByText(/Move 1 of/);
   await expect(moveLabel).toBeVisible();
+  await page.getByRole("button", { name: "Manual advance" }).click();
   const total = Number((await moveLabel.textContent())?.match(/of (\d+)/)?.[1]);
   expect(total).toBeGreaterThan(1);
 
@@ -240,7 +241,24 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   await expect(page.getByText(/Move 1 of/)).toBeVisible();
 
   for (let index = 0; index < total; index += 1) await page.getByRole("button", { name: "Done / Next" }).click();
-  await expect(page.getByRole("heading", { name: "Cube solved" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cube solved! 🎉" })).toBeVisible();
+  await expect(page.getByLabel("Live solved cube camera")).toBeVisible();
+  await expect(page.locator(".guidance-overlay")).toHaveCount(0);
+  await expect(page.locator(".active-face-wash")).toHaveCount(0);
+  await expect(page.locator(".turn-arrow")).toHaveCount(0);
+  await expect.poll(async () => await page.getByLabel("Live solved cube camera").evaluate((element) => {
+    const video = element as HTMLVideoElement;
+    const stream = video.srcObject as MediaStream | null;
+    const track = stream?.getVideoTracks()[0];
+    return { streamActive: stream?.active, trackState: track?.readyState };
+  })).toEqual({ streamActive: true, trackState: "live" });
+  const bannerPlacement = await page.locator(".solved-banner").evaluate((element) => {
+    const banner = element.getBoundingClientRect();
+    const video = element.parentElement!.getBoundingClientRect();
+    return { fromTop: banner.top - video.top, fromBottom: video.bottom - banner.bottom, videoHeight: video.height };
+  });
+  expect(Math.min(bannerPlacement.fromTop, bannerPlacement.fromBottom)).toBeLessThan(32);
+  expect(bannerPlacement.fromTop).toBeGreaterThan(bannerPlacement.videoHeight / 2);
 });
 
 test("manual capture commits immediately without a second confirmation", async ({ page, browserName }) => {

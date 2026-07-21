@@ -25,10 +25,13 @@ it.each(NOTATIONS)("renders layered, directional guidance for %s", (notation) =>
   expect(container.querySelector(".turn-arrow-outline")).toBeInTheDocument();
   const arrow = container.querySelector(".turn-arrow");
   expect(arrow).toHaveAttribute("marker-end", "url(#arrow-head)");
-  if (notation.endsWith("2")) expect(arrow).toHaveAttribute("marker-start", "url(#arrow-start)");
-  else expect(arrow).not.toHaveAttribute("marker-start");
+  expect(arrow).not.toHaveAttribute("marker-start");
   expect(container.querySelector(".turn-arrow-highlight")).toBeInTheDocument();
   expect(Boolean(container.querySelector(".half-turn-badge"))).toBe(notation.endsWith("2"));
   expect(container.querySelector("#arrow-head")).toHaveAttribute("markerUnits", "userSpaceOnUse");
+  expect(container.querySelector("#arrow-head")).toHaveAttribute("orient", "auto");
+  expect(container.querySelector(".arrow-head-outline")).toHaveAttribute("d", "M1 1 L8 5 L1 9");
+  expect(container.querySelector(".arrow-head-tip")).toHaveAttribute("d", "M1 1 L8 5 L1 9");
+  if (notation.endsWith("2")) expect(container.querySelector(".half-turn-label")).toHaveTextContent("180°");
   expect(container.querySelectorAll(".guide-sticker")).toHaveLength(12);
 });

@@ -151,10 +151,15 @@ See [Apple's certificate trust instructions](https://support.apple.com/en-us/102
    choose **Advanced correction** for the full cube net.
 5. Tap **Start camera guidance**, then hold the cube so its real colors match the Up/Front/Right
    ghost. Choose **Orientation matched**. Camera-free schematic guidance remains available.
-6. Follow the highlighted face and layered arrow, then press **Done / Next**. Prime arrows travel
-   counterclockwise; double turns show a 180° badge and two-headed arc. Clockwise is always defined
-   while looking directly at the named face. **Previous / Undo** and **Restart safely** guide actual
-   inverse turns before changing displayed progress.
+6. Follow the highlighted face and slim animated arrow. Its contrasted arrowhead points along the
+   turn path; prime arrows reverse the path, and double turns carry a clear 180° badge. Guidance
+   advances after a visible three-second countdown by default, while **Manual advance** keeps
+   **Done / Next** fully user-controlled. Clockwise is always defined while looking directly at the
+   named face. **Previous / Undo** and **Restart safely** pause the timer and guide actual inverse
+   turns before changing displayed progress.
+7. After the final move, the AR overlay disappears while the live camera stays visible behind a
+   compact success banner and brief reduced-motion-aware confetti. Choose **Solve another cube** to
+   stop the current camera and begin again.
 
 For camera-free testing, choose **Try demo without camera**. **Enter manually** starts from a valid
 solved net that can be edited. During scanning, **Upload image** works when camera access is absent.
