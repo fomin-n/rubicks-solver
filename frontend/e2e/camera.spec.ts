@@ -10,7 +10,7 @@ const SCANS = {
   D: ["blue", "green", "yellow", "red"],
 } as const;
 const INVALID_SCANS = { ...SCANS, F: ["green", "red", "orange", "orange"] } as const;
-const SCAN_ORDER_INDEX = { F: 0, R: 1, B: 2, L: 3, U: 4, D: 5 } as const;
+const SCAN_ORDER_INDEX = { F: 0, R: 1, B: 2, L: 3, U: 4 } as const;
 type ScanFixture = Record<keyof typeof SCANS, readonly string[]>;
 
 async function installSyntheticCamera(page: Page, scans: ScanFixture = SCANS) {
@@ -196,7 +196,7 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
 
   await expect(page.getByRole("heading", { name: "R · Right" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Captured faces", { exact: true })).toBeVisible();
-  await expect(page.locator(".captured-faces.compact article.captured-face")).toHaveCount(6);
+  await expect(page.locator(".captured-faces.compact article.captured-face")).toHaveCount(5);
   await expect(page.getByLabel("F recognized sticker preview").locator("span")).toHaveCount(4);
   await expect(page.getByLabel("F recognized sticker preview").locator("span").first()).toHaveCSS("--preview-color", "#e84255");
   const stableGeometry = await scanGeometry(page);
@@ -213,10 +213,17 @@ test("physical-frame auto capture previews, retakes, solves directly, and guides
   await expect(page.getByRole("heading", { name: "B · Back" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByLabel("R recognized sticker preview")).toBeVisible();
 
-  for (const [face, name] of [["B", "Back"], ["L", "Left"], ["U", "Up"], ["D", "Down"]] as const) {
+  for (const [face, name] of [["B", "Back"], ["L", "Left"]] as const) {
     await expect(page.getByRole("heading", { name: `${face} · ${name}` })).toBeVisible({ timeout: 15_000 });
     await page.evaluate((nextFace) => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace(nextFace), face);
   }
+  await expect(page.getByRole("heading", { name: "U · Up" })).toBeVisible({ timeout: 15_000 });
+  const finalUpload = page.waitForResponse((response) => response.url().includes("/faces/U") && response.status() === 200);
+  await page.evaluate(() => (window as unknown as { setSyntheticFace: (face: string) => void }).setSyntheticFace("U"));
+  const completion = await (await finalUpload).json();
+  expect(completion.completionStatus).toBe("unique");
+  expect(completion.capturedFaces.D.source).toBe("inferred");
+  await expect(page.getByRole("heading", { name: "D · Down" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Start camera guidance" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Check every facelet" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Validate and solve" })).toHaveCount(0);
@@ -272,14 +279,19 @@ test("manual capture commits immediately without a second confirmation", async (
   await expect(page.getByRole("button", { name: "Use this capture anyway" })).toHaveCount(0);
 });
 
-test("portrait scan geometry stays fixed for the complete F through D sequence", async ({ page }) => {
+test("portrait scan geometry stays fixed through five captures and infers D", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Start scanning" }).click();
   await page.getByRole("button", { name: "Use image files instead" }).click();
   await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
   const initial = await scanGeometry(page);
 
-  const steps = [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"], ["U", "D · Down"]] as const;
+  const capturedRequests: string[] = [];
+  page.on("request", (request) => {
+    const match = request.url().match(/\/faces\/([FRBLU])\?/);
+    if (match) capturedRequests.push(match[1]);
+  });
+  const steps = [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"]] as const;
   for (const [face, nextHeading] of steps) {
     await uploadSyntheticFace(page, face);
     await expect(page.getByRole("heading", { name: nextHeading })).toBeVisible({ timeout: 15_000 });
@@ -287,22 +299,37 @@ test("portrait scan geometry stays fixed for the complete F through D sequence",
     await expect(page.locator(".scan-progress .current")).toHaveText(nextHeading[0]);
     await expect(page.locator(".scan-progress .done")).toHaveCount(SCAN_ORDER_INDEX[face] + 1);
   }
-  await uploadSyntheticFace(page, "D");
+  await page.route("**/api/sessions/*/validate", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  });
+  const finalUpload = page.waitForResponse((response) => response.url().includes("/faces/U") && response.status() === 200);
+  await uploadSyntheticFace(page, "U");
+  const completion = await (await finalUpload).json();
+  expect(completion.capturedFaces.D.source).toBe("inferred");
+  expect(completion.capturedFaces.D.predictedColors).toEqual([...SCANS.D]);
+  await expect(page.getByText("Final face calculated", { exact: true })).toBeVisible();
+  await expect(page.locator(".processing article.captured-face")).toHaveCount(6);
+  await expect(page.locator('.processing article.captured-face[data-face="D"]')).toContainText("Calculated");
+  await expect(page.getByRole("heading", { name: "D · Down" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /confirm/i })).toHaveCount(0);
   await expect(page.getByText(/Move 1 of/)).toBeVisible({ timeout: 20_000 });
+  expect(capturedRequests).toEqual(["F", "R", "B", "L", "U"]);
 });
 
-test("an invalid six-face scan enters targeted recovery and preserves every preview", async ({ page, browserName }) => {
+test("an invalid five-face scan enters targeted recovery and recomputes D after retake", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Canvas MediaStream injection is the deterministic Chromium camera test.");
   await installSyntheticCamera(page, INVALID_SCANS);
   await startCameraScan(page);
   const initial = await scanGeometry(page);
-  for (const [face, nextHeading] of [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"], ["U", "D · Down"], ["D", "Check the highlighted faces"]] as const) {
+  for (const [face, nextHeading] of [["F", "R · Right"], ["R", "B · Back"], ["B", "L · Left"], ["L", "U · Up"], ["U", "Check the highlighted faces"]] as const) {
     await page.evaluate((nextFace) => (window as unknown as { setSyntheticFace: (value: string) => void }).setSyntheticFace(nextFace), face);
     await expect(page.getByRole("heading", { name: nextHeading })).toBeVisible({ timeout: 20_000 });
-    if (face !== "D") expectSameGeometry(await scanGeometry(page), initial);
+    if (face !== "U") expectSameGeometry(await scanGeometry(page), initial);
   }
-  await expect(page.locator("article.captured-face")).toHaveCount(6);
-  await expect(page.getByRole("button", { name: "Advanced correction" })).toBeVisible();
+  await expect(page.locator("article.captured-face")).toHaveCount(5);
+  await expect(page.locator('article.captured-face[data-face="D"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Advanced correction" })).toHaveCount(0);
   const frontPreview = page.locator('article.captured-face[data-face="F"]');
   await frontPreview.getByRole("button", { name: "Retake" }).click();
   await expect(page.getByRole("heading", { name: "Retake F" })).toBeVisible();
@@ -311,6 +338,5 @@ test("an invalid six-face scan enters targeted recovery and preserves every prev
   }).setSyntheticFaceColors("F", colors), [...SCANS.F]);
   await page.getByRole("button", { name: "Start camera to retake" }).click();
   await expect(page.getByRole("heading", { name: "F · Front" })).toBeVisible();
-  await expect(page.locator("article.captured-face")).toHaveCount(6);
   await expect(page.getByRole("button", { name: "Start camera guidance" })).toBeVisible({ timeout: 20_000 });
 });

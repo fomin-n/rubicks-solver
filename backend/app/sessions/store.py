@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from threading import RLock
 from uuid import UUID, uuid4
 
@@ -9,6 +10,11 @@ from app.cube.model import Face, FaceletMap
 from app.vision.processing import ProcessedFace
 
 SESSION_TTL = timedelta(minutes=30)
+
+
+class FaceSource(StrEnum):
+    SCANNED = "scanned"
+    INFERRED = "inferred"
 
 
 @dataclass(slots=True)
@@ -19,6 +25,9 @@ class Session:
     scans: dict[Face, ProcessedFace] = field(default_factory=dict)
     facelets: FaceletMap | None = None
     confidence: dict[Face, list[float]] | None = None
+    face_sources: dict[Face, FaceSource] = field(default_factory=dict)
+    completion_status: str | None = None
+    completion_diagnostics: tuple[str, ...] = ()
 
     def touch(self) -> None:
         self.expires_at = datetime.now(UTC) + SESSION_TTL

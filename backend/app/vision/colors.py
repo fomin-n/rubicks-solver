@@ -64,6 +64,41 @@ def classify_provisional(
     return labels, confidence
 
 
+def classify_partial_samples(
+    samples: dict[Face, tuple[StickerSample, StickerSample, StickerSample, StickerSample]],
+    missing_face: Face = Face.D,
+) -> tuple[dict[Face, list[Color]], dict[Face, list[float]]]:
+    """Classify five faces while reserving four canonical color slots for the missing face."""
+    observed_faces = tuple(face for face in FACE_ORDER if face != missing_face)
+    if set(samples) != set(observed_faces):
+        raise ValueError("Partial classification requires every observed face exactly once")
+
+    colors = tuple(Color)
+    references = np.array([REFERENCE_LAB[color] for color in colors])
+    ordered = [sample for face in observed_faces for sample in samples[face]]
+    values = np.array([sample.lab for sample in ordered], dtype=float)
+    color_distances = _color_distances(values, references)
+    slot_distances = np.repeat(color_distances, 4, axis=1)
+    rows, columns = linear_sum_assignment(slot_distances)
+    assignments = np.zeros(len(ordered), dtype=np.int32)
+    assignments[rows] = columns // 4
+
+    facelets: dict[Face, list[Color]] = {}
+    confidence: dict[Face, list[float]] = {}
+    for face_index, face in enumerate(observed_faces):
+        facelets[face] = []
+        confidence[face] = []
+        for sticker_index in range(4):
+            index = face_index * 4 + sticker_index
+            assigned = int(assignments[index])
+            facelets[face].append(colors[assigned])
+            ranked = np.sort(color_distances[index])
+            margin = float((ranked[1] - ranked[0]) / max(ranked[1], 1.0))
+            consistency_penalty = min(0.3, ordered[index].consistency / 120)
+            confidence[face].append(round(max(0.0, min(1.0, margin - consistency_penalty)), 3))
+    return facelets, confidence
+
+
 def _balanced_clusters(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     model = KMeans(n_clusters=6, random_state=42, n_init=20).fit(values)
     centroids = model.cluster_centers_

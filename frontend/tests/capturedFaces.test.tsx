@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { CapturedFaces } from "../src/camera/CapturedFaces";
 import type { CapturedFacePreview } from "../src/types";
 
-function preview(face: "F" | "R", provisional = true): CapturedFacePreview {
+function preview(face: "F" | "R" | "D", provisional = true, source: "scanned" | "inferred" = "scanned"): CapturedFacePreview {
   return {
     face,
     previewHex: ["#d72d3d", "#2468ce", "#24a665", "#dfc525"],
@@ -11,6 +11,7 @@ function preview(face: "F" | "R", provisional = true): CapturedFacePreview {
     provisional,
     warnings: [],
     warningCodes: [],
+    source,
   };
 }
 
@@ -31,8 +32,21 @@ it("shows four immediate swatches per face and retakes only the selected face", 
 it("uses the fixed compact dock treatment while scanning", () => {
   render(<CapturedFaces compact previews={{ F: preview("F") }} busy={false} onRetake={vi.fn()} />);
   expect(screen.getByLabelText("Captured faces")).toHaveClass("compact");
-  expect(screen.getAllByRole("article")).toHaveLength(6);
+  expect(screen.getAllByRole("article")).toHaveLength(5);
   expect(screen.getByLabelText("R not captured")).toBeInTheDocument();
+  expect(screen.queryByLabelText("D not captured")).not.toBeInTheDocument();
   expect(screen.getByLabelText("F recognized sticker preview").children).toHaveLength(4);
   expect(screen.getByRole("button", { name: "Retake" })).toBeEnabled();
+});
+
+it("shows an inferred D in the complete canonical preview row without a retake action", () => {
+  render(<CapturedFaces compact showInferred previews={{ F: preview("F"), D: preview("D", false, "inferred") }} busy={false} onRetake={vi.fn()} />);
+  expect(screen.getAllByRole("article")).toHaveLength(6);
+  const down = screen.getByText("D").closest("article");
+  expect(down).not.toBeNull();
+  expect(within(down!).getByText("Calculated")).toBeInTheDocument();
+  const stickers = within(down!).getByLabelText("D recognized sticker preview").children;
+  expect(stickers).toHaveLength(4);
+  expect((stickers[0] as HTMLElement).style.getPropertyValue("--preview-color")).toBe("#e84255");
+  expect(within(down!).queryByRole("button", { name: "Retake" })).not.toBeInTheDocument();
 });

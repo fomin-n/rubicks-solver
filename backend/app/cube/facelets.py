@@ -77,6 +77,11 @@ def canonical_facelets_to_state(facelets: CanonicalFaceletMap) -> CubeState:
         if cubie is None:
             names = ", ".join(sticker.value for sticker in stickers)
             raise FaceletConversionError(f"Corner {position} has an impossible ordering: {names}.")
+        if stickers[twist] != CORNER_COLORS[cubie][0]:
+            names = ", ".join(sticker.value for sticker in stickers)
+            raise FaceletConversionError(
+                f"Corner {position} has an impossible axis sticker: {names}."
+            )
         permutation.append(cubie)
         orientation.append(twist % 3)
     try:

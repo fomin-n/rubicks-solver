@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.cube.model import Color, Face
+from app.sessions.store import FaceSource
 
 
 def _camel_case(value: str) -> str:
@@ -68,6 +69,7 @@ class CapturedFacePreviewResponse(ApiModel):
     provisional: bool
     warnings: list[str]
     warning_codes: list[str]
+    source: FaceSource
 
 
 class SessionResponse(ApiModel):
@@ -79,21 +81,8 @@ class SessionResponse(ApiModel):
     facelets: dict[Face, list[Color]] | None = None
     confidence: dict[Face, list[float]] | None = None
     captured_faces: dict[Face, CapturedFacePreviewResponse]
-
-
-class UploadResponse(ApiModel):
-    face: Face
-    acceptable: bool
-    committed: bool
-    readiness_code: str
-    readiness_message: str
-    samples: list[SampleResponse]
-    quality: QualityResponse
-    scans_complete: bool
-    facelets: dict[Face, list[Color]] | None = None
-    confidence: dict[Face, list[float]] | None = None
-    preview: CapturedFacePreviewResponse
-    captured_faces: dict[Face, CapturedFacePreviewResponse]
+    completion_status: Literal["pending", "unique", "none", "ambiguous"]
+    completion_diagnostics: list[str]
 
 
 class ValidationIssueResponse(ApiModel):
@@ -114,6 +103,24 @@ class ValidationResponse(ApiModel):
     color_counts: dict[Color, int]
     errors: list[ValidationIssueResponse]
     suggestions: list[RotationSuggestionResponse]
+
+
+class UploadResponse(ApiModel):
+    face: Face
+    acceptable: bool
+    committed: bool
+    readiness_code: str
+    readiness_message: str
+    samples: list[SampleResponse]
+    quality: QualityResponse
+    scans_complete: bool
+    facelets: dict[Face, list[Color]] | None = None
+    confidence: dict[Face, list[float]] | None = None
+    preview: CapturedFacePreviewResponse
+    captured_faces: dict[Face, CapturedFacePreviewResponse]
+    completion_status: Literal["pending", "unique", "none", "ambiguous"]
+    completion_diagnostics: list[str]
+    validation: ValidationResponse | None = None
 
 
 class OverlayResponse(ApiModel):

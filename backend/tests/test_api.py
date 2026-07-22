@@ -67,6 +67,8 @@ def test_health_session_upload_and_delete():
     assert len(upload_body["samples"]) == 4
     assert len(upload_body["preview"]["previewHex"]) == 4
     assert upload_body["preview"]["provisional"] is True
+    assert upload_body["preview"]["source"] == "scanned"
+    assert upload_body["completionStatus"] == "pending"
     state = client.get(f"/api/sessions/{session_id}").json()
     assert state["scannedFaces"] == ["F"]
     assert len(state["capturedFaces"]["F"]["previewHex"]) == 4
@@ -101,7 +103,7 @@ def test_manual_state_validation_and_optimal_solve():
     assert body["moveCount"] > 0
 
 
-def test_six_images_are_balanced_classified_and_validated():
+def test_five_images_infer_down_and_are_classified_and_validated():
     session_id = _session_id()
     scramble = apply_sequence(
         SOLVED_STATE,
@@ -109,7 +111,7 @@ def test_six_images_are_balanced_classified_and_validated():
     )
     expected = state_to_facelets(scramble, TARGET)
     final = None
-    for face in (Face.F, Face.R, Face.B, Face.L, Face.U, Face.D):
+    for face in (Face.F, Face.R, Face.B, Face.L, Face.U):
         response = client.post(
             f"/api/sessions/{session_id}/faces/{face.value}",
             files={"image": (f"{face.value}.png", _face_png(expected[face]), "image/png")},
@@ -118,6 +120,13 @@ def test_six_images_are_balanced_classified_and_validated():
         final = response.json()
     assert final is not None
     assert final["scansComplete"] is True
+    assert final["completionStatus"] == "unique"
+    assert final["validation"]["valid"] is True
+    assert len(final["capturedFaces"]) == 6
+    assert final["capturedFaces"]["D"]["source"] == "inferred"
+    assert final["capturedFaces"]["D"]["predictedColors"] == [
+        color.value for color in expected[Face.D]
+    ]
     assert all(not preview["provisional"] for preview in final["capturedFaces"].values())
     canonical = {color.value: value for color, value in CANONICAL_HEX.items()}
     for preview in final["capturedFaces"].values():
@@ -127,6 +136,10 @@ def test_six_images_are_balanced_classified_and_validated():
         color.value for color in Color for _ in range(4)
     )
     assert client.post(f"/api/sessions/{session_id}/validate").json()["valid"] is True
+    session = client.get(f"/api/sessions/{session_id}").json()
+    assert session["scanOrder"] == ["F", "R", "B", "L", "U"]
+    assert session["scannedFaces"] == ["F", "R", "B", "L", "U"]
+    assert session["nextFace"] is None
 
 
 def test_invalid_state_and_unknown_session():
@@ -153,6 +166,12 @@ def test_upload_rejects_wrong_type_and_oversize():
         files={"image": ("face.png", b"0" * (5 * 1024 * 1024 + 1), "image/png")},
     )
     assert large.status_code == 413
+    inferred = client.post(
+        f"/api/sessions/{session_id}/faces/D",
+        files={"image": ("D.png", _png(), "image/png")},
+    )
+    assert inferred.status_code == 409
+    assert inferred.json()["code"] == "face_is_inferred"
 
 
 def test_candidate_commit_modes_are_non_destructive():
@@ -259,3 +278,39 @@ def test_replacing_one_face_preserves_other_previews():
         replacement["capturedFaces"]["F"]["previewHex"] != first["capturedFaces"]["F"]["previewHex"]
     )
     assert set(client.get(f"/api/sessions/{session_id}").json()["scannedFaces"]) == {"F", "R"}
+
+
+def test_retake_invalidates_and_recomputes_inferred_down_face():
+    session_id = _session_id()
+    scramble = apply_sequence(
+        SOLVED_STATE,
+        [MOVE_BY_NOTATION[name] for name in ("R", "U", "F'", "R2", "U2")],
+    )
+    expected = state_to_facelets(scramble, TARGET)
+    final = None
+    for face in (Face.F, Face.R, Face.B, Face.L, Face.U):
+        final = client.post(
+            f"/api/sessions/{session_id}/faces/{face.value}",
+            files={"image": (f"{face.value}.png", _face_png(expected[face]), "image/png")},
+        ).json()
+    assert final is not None
+    assert final["completionStatus"] == "unique"
+    original_down = final["capturedFaces"]["D"]
+
+    invalid_front = list(expected[Face.F])
+    invalid_front[0], invalid_front[1] = invalid_front[1], invalid_front[0]
+    invalidated = client.post(
+        f"/api/sessions/{session_id}/faces/F",
+        files={"image": ("F-invalid.png", _face_png(invalid_front), "image/png")},
+    ).json()
+    assert invalidated["completionStatus"] == "none"
+    assert invalidated["scansComplete"] is False
+    assert "D" not in invalidated["capturedFaces"]
+    assert invalidated["validation"]["errors"][0]["code"] == "missing_face_completion_failed"
+
+    recomputed = client.post(
+        f"/api/sessions/{session_id}/faces/F",
+        files={"image": ("F.png", _face_png(expected[Face.F]), "image/png")},
+    ).json()
+    assert recomputed["completionStatus"] == "unique"
+    assert recomputed["capturedFaces"]["D"] == original_down

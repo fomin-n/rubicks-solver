@@ -1,6 +1,8 @@
 export const FACES = ["U", "R", "F", "D", "L", "B"] as const;
 export type Face = (typeof FACES)[number];
-export const SCAN_ORDER = ["F", "R", "B", "L", "U", "D"] as const;
+export const SCAN_ORDER = ["F", "R", "B", "L", "U"] as const;
+export type ScanFace = (typeof SCAN_ORDER)[number];
+export const PREVIEW_ORDER = [...SCAN_ORDER, "D"] as const;
 
 export const COLORS = ["red", "blue", "orange", "white", "green", "yellow"] as const;
 export type CubeColor = (typeof COLORS)[number];
@@ -23,6 +25,8 @@ export interface SessionResponse {
   facelets: Facelets | null;
   confidence: Record<Face, number[]> | null;
   capturedFaces: Partial<Record<Face, CapturedFacePreview>>;
+  completionStatus: "pending" | "unique" | "none" | "ambiguous";
+  completionDiagnostics: string[];
 }
 
 export interface CapturedFacePreview {
@@ -33,6 +37,7 @@ export interface CapturedFacePreview {
   provisional: boolean;
   warnings: string[];
   warningCodes: string[];
+  source: "scanned" | "inferred";
 }
 
 export interface ValidationIssue {
@@ -97,6 +102,9 @@ export interface UploadResponse {
   confidence: Record<Face, number[]> | null;
   preview: CapturedFacePreview;
   capturedFaces: Partial<Record<Face, CapturedFacePreview>>;
+  completionStatus: "pending" | "unique" | "none" | "ambiguous";
+  completionDiagnostics: string[];
+  validation: ValidationResponse | null;
 }
 
 export type CaptureCommitMode = "always" | "if_acceptable" | "never";

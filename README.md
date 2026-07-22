@@ -1,20 +1,23 @@
 # Rubik's 2×2 Camera Solver
 
-A local web application that scans all six faces of a physical 2×2×2 cube, shows recognized colors
-immediately, validates the physical state, computes a shortest solution, and guides each turn with
-fixed camera overlays. A valid six-face scan goes directly to the solution; detailed correction is
-an optional recovery tool.
+A local web application that scans five faces of a physical 2×2×2 cube, deterministically calculates
+the missing Down face, validates the complete state, computes a shortest solution, and guides each
+turn with fixed camera overlays. A valid five-face scan goes directly to the solution; detailed
+correction is an optional recovery tool.
 
 The repository is intentionally named `rubicks-solver`. The application supports red, blue, orange,
 white, green, and yellow cubes with default opposites white/yellow, red/orange, and green/blue.
 
 ## MVP features and limitations
 
-- Guided `F → R → B → L → U → D` capture with automatic hold-to-capture, manual capture,
+- Guided `F → R → B → L → U` capture with automatic hold-to-capture, manual capture,
   or image files.
-- Classical Lab color sampling, balanced six-color clustering, confidence, and quality warnings.
-- A persistent six-face preview strip with provisional/final labels, confidence, warnings, and
-  non-destructive per-face retakes.
+- Classical Lab color sampling, calibrated constrained classification, confidence, and quality
+  warnings.
+- A persistent five-face scan strip plus a canonical calculated D preview, with non-destructive
+  retakes for scanned faces.
+- Deterministic D completion by color-count permutations, physical validation, and exact supported
+  color-scheme handedness.
 - Targeted invalid-scan recovery plus an optional cube-net editor with face rotation and counts.
 - Detailed physical-state validation and likely face-rotation suggestions.
 - Original optimal 2×2 solver in the Half Turn Metric (HTM).
@@ -33,7 +36,8 @@ flowchart LR
     Camera[Browser camera or file] --> UI[React capture and cube-net UI]
     UI --> API[FastAPI session API]
     API --> Vision[OpenCV Lab sampling and balanced clustering]
-    API --> Cube[Independent corner cube engine]
+    API --> Completion[Deterministic missing-face completion]
+    Completion --> Cube[Independent corner cube engine]
     Cube --> Validation[Physical validation]
     Cube --> Solver[Exact HTM distance table]
     Solver --> Guidance[Structured U/F/R guidance]
@@ -55,13 +59,14 @@ Every captured face is indexed as viewed directly toward it:
 ```
 
 Scan Front. Rotate the **whole cube** left for Right, left again for Back, and left again for Left.
-Return to Front and tilt the whole cube down for Up; return and tilt it up for Down. Never turn a
-layer during scanning. The UI repeats these directions for every face.
+Return to Front and tilt the whole cube down for Up. Down is calculated from the four lower corner
+pairs already visible on F/R/B/L. Never turn a layer during scanning. The UI repeats these
+directions for every captured face.
 
 A 2×2 has no centers. The engine therefore uses the three stickers currently at the geometric DBL
 (down/back/left) corner as a deterministic reference, maps their opposites to U/F/R, and validates
-all other corners. This supports either color-scheme handedness and accepts a solved cube in any
-global rotation.
+all other corners. Five-face completion additionally checks the handedness of this MVP's supported
+white/yellow, red/orange, and green/blue color scheme while accepting any whole-cube rotation.
 
 The solver fixes DBL and indexes the remaining state as `7! × 3^6 = 3,674,160` states. A reverse BFS
 stores the exact distance for every state. It returns a shortest sequence using U, R, and F turns;
@@ -143,12 +148,13 @@ See [Apple's certificate trust instructions](https://support.apple.com/en-us/102
 2. Hold steady for roughly 0.65 seconds while the readiness bar fills. Typical usable captures
    complete in about 0.5–0.9 seconds once framing and movement settle. Auto capture is on by
    default; manual capture and file upload remain available and commit immediately.
-3. Check each new four-sticker preview. Labels are **Provisional** until all six faces are available,
-   then become globally balanced **Final** labels. A warning asks for attention but does not erase a
-   usable face. Choose **Retake** on any card without losing the other captures.
-4. After Down is captured, validation and optimal solving run automatically. A valid scan skips the
-   editor. If validation finds a physical conflict, only likely faces are highlighted; retake one or
-   choose **Advanced correction** for the full cube net.
+3. Check each new four-sticker preview. Labels are **Provisional** until Up completes the five-face
+   scan. The inferred Down preview then appears as **Calculated** using the same canonical colors.
+   A warning asks for attention but does not erase a usable face. Choose **Retake** on any scanned
+   card without losing the other captures.
+4. After Up is captured, Down is reconstructed from the only physically valid permutation and
+   validation and optimal solving run automatically. A valid scan skips the editor. If no unique
+   completion exists, the five captures are preserved and highlighted for retake.
 5. Tap **Start camera guidance**, then hold the cube so its real colors match the Up/Front/Right
    ghost. Choose **Orientation matched**. Camera-free schematic guidance remains available.
 6. Follow the highlighted face and slim animated arrow. Its contrasted arrowhead points along the
@@ -177,7 +183,7 @@ solved net that can be edited. During scanning, **Upload image** works when came
   inconvenient, turn it off and use **Capture manually**; there is no second confirmation step.
 - A short motion spike pauses the hold instead of discarding all progress. After capture, show a
   meaningfully different face to rearm; the app remembers a scene change even during processing.
-- If no video device exists, use six image files or the demo/manual modes.
+- If no video device exists, use five image files or the demo/manual modes.
 
 Add `?captureDebug=1` to the application URL to show raw metrics, thresholds, smoothed motion,
 rolling hold state, cooldown, and scene-change status. This opt-in panel is intended for camera
@@ -224,7 +230,7 @@ before describing the feature as physically verified:
 - [ ] HTTPS opens without a certificate warning and Safari grants rear-camera permission.
 - [ ] Portrait/landscape rotation, safe areas, bottom controls, and keyboard do not obscure actions.
 - [ ] Preview resumes after backgrounding Safari and camera switching releases the previous device.
-- [ ] All six faces auto-capture once, reject blur/glare, and require scene change between faces.
+- [ ] F/R/B/L/U auto-capture once, D appears as Calculated, and no D camera step is shown.
 - [ ] Colored U/F/R calibration matches the scanned cube and every supported arrow is unambiguous.
 - [ ] Confirm, Previous/Undo, and Restart keep the physical cube aligned with the displayed state.
 
@@ -256,6 +262,6 @@ the recorded [direct dependency license audit](THIRD_PARTY_LICENSES.md).
 
 ## Future improvements
 
-Potential follow-ups include five-face inference, per-device color calibration,
-`solvePnP` pose estimation, continuous turn verification, hand-occlusion handling, alternative color
+Potential follow-ups include per-device color calibration, `solvePnP` pose estimation, continuous
+turn verification, hand-occlusion handling, alternative color
 schemes, PWA support, speech instructions, and 3×3×3 support.

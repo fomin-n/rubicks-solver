@@ -31,8 +31,17 @@ OPPOSITE_COLOR: dict[Color, Color] = {
     Color.BLUE: Color.GREEN,
 }
 
+SUPPORTED_SOLVED_COLORS: dict[Face, Color] = {
+    Face.U: Color.WHITE,
+    Face.R: Color.RED,
+    Face.F: Color.GREEN,
+    Face.D: Color.YELLOW,
+    Face.L: Color.ORANGE,
+    Face.B: Color.BLUE,
+}
+
 FACE_ORDER = (Face.U, Face.R, Face.F, Face.D, Face.L, Face.B)
-SCAN_ORDER = (Face.F, Face.R, Face.B, Face.L, Face.U, Face.D)
+SCAN_ORDER = (Face.F, Face.R, Face.B, Face.L, Face.U)
 CORNER_NAMES = ("URF", "UFL", "ULB", "UBR", "DFR", "DLF", "DBL", "DRB")
 
 type FaceletKey = tuple[Face, int]

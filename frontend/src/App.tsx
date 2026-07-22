@@ -14,6 +14,7 @@ import {
   type CapturedFacePreview,
   type Face,
   type Facelets,
+  type ScanFace,
   type SolveResponse,
   type UploadResponse,
   type ValidationResponse,
@@ -26,7 +27,7 @@ interface State {
   screen: Screen;
   sessionId: string | null;
   scanIndex: number;
-  retakeFace: Face | null;
+  retakeFace: ScanFace | null;
   capturedFaces: Partial<Record<Face, CapturedFacePreview>>;
   facelets: Facelets | null;
   confidence: Record<Face, number[]> | null;
@@ -52,13 +53,12 @@ const initialState: State = {
 };
 function reducer(state: State, action: Action): State { return action.type === "reset" ? initialState : { ...state, ...action.value }; }
 
-const SCAN_INSTRUCTIONS: Record<Face, string> = {
+const SCAN_INSTRUCTIONS: Record<ScanFace, string> = {
   F: "Hold the cube straight on. This orientation becomes Front.",
   R: "Rotate the whole cube left once. Do not turn a layer.",
   B: "Rotate the whole cube left once more.",
   L: "Rotate the whole cube left once more.",
   U: "Return to Front, then tilt the whole cube downward to show Up.",
-  D: "Return to Front, then tilt the whole cube upward to show Down.",
 };
 
 function captureNotices(result: UploadResponse): CaptureNotice[] {
@@ -138,6 +138,15 @@ export default function App() {
       await processCompletedScan(state.sessionId, result.facelets, result.confidence, result.capturedFaces);
       return;
     }
+    if (result.completionStatus === "none" || result.completionStatus === "ambiguous") {
+      camera.stop();
+      patch({
+        screen: "recovery", busy: false, facelets: null, confidence: null,
+        capturedFaces: result.capturedFaces, retakeFace: null, validation: result.validation,
+        notices, captureFeedback: feedback,
+      });
+      return;
+    }
     const nextFace = SCAN_ORDER.find((face) => !result.capturedFaces[face]) ?? SCAN_ORDER[0];
     patch({
       busy: false, capturedFaces: result.capturedFaces, retakeFace: null,
@@ -169,6 +178,7 @@ export default function App() {
   }
 
   function startRetake(face: Face) {
+    if (face === "D") return;
     patch({
       screen: state.screen === "scan" || state.cameraFree ? "scan" : "permission",
       retakeFace: face, notices: [], captureFeedback: null, error: null,
@@ -211,13 +221,13 @@ export default function App() {
       {state.error && <div className="alert error global" role="alert">{state.error}<button aria-label="Dismiss error" onClick={() => patch({ error: null })}>×</button></div>}
       {state.screen === "welcome" && <section className="hero"><div className="hero-copy"><span className="eyebrow">Shortest solution</span><h1>Scan your 2×2.<br />Turn it solved.</h1><div className="hero-actions"><button className="primary large" disabled={state.busy} onClick={() => void begin("permission")}>Start scanning</button><button disabled={state.busy} onClick={() => void begin("verify", DEMO_FACELETS, true)}>Try demo without camera</button><button disabled={state.busy} onClick={() => void begin("verify", SOLVED_FACELETS, true)}>Enter manually</button></div></div><div className="hero-cube" aria-hidden="true"><div className="cube-art"><i /><i /><i /></div></div></section>}
       {state.screen === "permission" && <section className="center-card panel"><span className="eyebrow">Camera setup</span><h1>{state.retakeFace ? `Retake ${state.retakeFace}` : "Allow camera access"}</h1><p>Tap below to start Safari's rear camera.</p>{camera.problem && <div className="alert error" role="alert">{camera.problem.message}</div>}<button className="primary large" disabled={state.busy || camera.starting} onClick={() => void requestCamera()}>{state.busy || camera.starting ? "Requesting…" : state.retakeFace ? "Start camera to retake" : "Allow camera"}</button><button onClick={() => patch({ screen: "scan", cameraFree: true })}>Use image files instead</button></section>}
-      {state.screen === "scan" && <section className="scan-layout"><div className="scan-copy panel"><div className="scan-heading"><div><span className="eyebrow">{state.retakeFace ? "Retaking captured face" : `Face ${capturedCount + 1} of 6`}</span><h1>{scanFace} · {faceName(scanFace)}</h1></div><p>{SCAN_INSTRUCTIONS[scanFace]}</p></div><div className="scan-progress" aria-label={`${capturedCount} faces captured`}>{SCAN_ORDER.map((face) => {
+      {state.screen === "scan" && <section className="scan-layout"><div className="scan-copy panel"><div className="scan-heading"><div><span className="eyebrow">{state.retakeFace ? "Retaking captured face" : `Face ${capturedCount + 1} of 5`}</span><h1>{scanFace} · {faceName(scanFace)}</h1></div><p>{SCAN_INSTRUCTIONS[scanFace]}</p></div><div className="scan-progress" aria-label={`${capturedCount} faces captured`}>{SCAN_ORDER.map((face) => {
         const current = face === scanFace;
         const scanned = Boolean(state.capturedFaces[face]);
         return <span key={face} className={`${scanned ? "done" : "remaining"}${current ? " current" : ""}`} aria-current={current ? "step" : undefined}>{face}</span>;
       })}</div><div className={`scan-feedback-slot${state.notices.length ? " warning" : state.captureFeedback ? " success" : ""}`} role="status"><span>{state.notices[0]?.message ?? (state.captureFeedback ? `✓ ${state.captureFeedback}` : "Keep the full face inside the guide")}</span></div><details><summary>Orientation details</summary><p>Rotate the whole cube only. Never turn a layer while scanning.</p></details></div><div className="scan-camera-column"><CameraCapture stream={camera.stream} devices={camera.devices} selectedDeviceId={camera.selectedDeviceId} problem={camera.problem} busy={state.busy} captureKey={scanFace} autoEnabled={state.autoCapture} onAutoChange={(autoCapture) => patch({ autoCapture })} onCapture={(blob, source) => void uploadCapture(blob, source)} onSwitchCamera={(id) => void requestCamera(id)} onRecover={() => void requestCamera()} onPlaybackProblem={camera.reportPlaybackProblem} onPlaybackRecovered={camera.clearProblem} /><div className="scan-preview-dock"><CapturedFaces compact previews={state.capturedFaces} activeFace={state.retakeFace} busy={state.busy} onRetake={startRetake} /></div></div></section>}
-      {state.screen === "processing" && <section className="center-card panel processing"><span className="processing-spinner" aria-hidden="true" /><span className="eyebrow">Six faces captured</span><h1>Checking cube…</h1></section>}
-      {state.screen === "recovery" && <section className="recovery panel"><div className="section-heading"><div><span className="eyebrow">Scan needs attention</span><h1>Check the highlighted faces</h1></div><p>Your other captures are preserved. Retake only a suspicious face, or open the detailed editor.</p></div><div className="recovery-errors" role="alert"><ul>{state.validation?.errors.map((issue) => <li key={`${issue.code}-${issue.face ?? "cube"}`}>{issue.message}</li>)}</ul></div><CapturedFaces previews={state.capturedFaces} problemFaces={problemFaces} busy={state.busy} onRetake={startRetake} /><div className="recovery-actions"><button className="primary" onClick={() => problemFaces[0] && startRetake(problemFaces[0])} disabled={!problemFaces.length}>Retake likely face</button><button onClick={() => patch({ screen: "verify" })}>Advanced correction</button><button onClick={() => void resetFlow()}>Start over</button></div></section>}
+      {state.screen === "processing" && <section className="center-card panel processing"><span className="processing-spinner" aria-hidden="true" /><span className="eyebrow">Final face calculated</span><h1>Checking cube…</h1><CapturedFaces compact showInferred readOnly previews={state.capturedFaces} busy onRetake={() => undefined} /></section>}
+      {state.screen === "recovery" && <section className="recovery panel"><div className="section-heading"><div><span className="eyebrow">Scan needs attention</span><h1>Check the highlighted faces</h1></div><p>{state.facelets ? "Your other captures are preserved. Retake only a suspicious face, or open the detailed editor." : "Your five captures are preserved. Retake a highlighted face to calculate the final face again."}</p></div><div className="recovery-errors" role="alert"><ul>{state.validation?.errors.map((issue) => <li key={`${issue.code}-${issue.face ?? "cube"}`}>{issue.message}</li>)}</ul></div><CapturedFaces previews={state.capturedFaces} problemFaces={problemFaces} busy={state.busy} onRetake={startRetake} /><div className="recovery-actions"><button className="primary" onClick={() => problemFaces[0] && startRetake(problemFaces[0])} disabled={!problemFaces.length}>Retake likely face</button>{state.facelets && <button onClick={() => patch({ screen: "verify" })}>Advanced correction</button>}<button onClick={() => void resetFlow()}>Start over</button></div></section>}
       {state.screen === "verify" && state.facelets && <CubeNetEditor facelets={state.facelets} confidence={state.confidence} validation={state.validation} canRetake={capturedCount > 0} busy={state.busy} onChange={(facelets) => patch({ facelets, validation: null })} onRetake={startRetake} onSolve={() => void validateAndSolve()} />}
       {state.screen === "solution" && state.solution && solutionMove && guidanceFacelets && <SolutionGuide solution={state.solution} move={solutionMove} facelets={guidanceFacelets} completed={state.guidanceMode === "restart" ? state.restartCursor : state.moveIndex} mode={state.guidanceMode} stream={camera.stream} cameraStarting={camera.starting} cameraProblem={camera.problem} guidanceReady={state.guidanceReady} onStartCamera={() => void camera.start()} onOrientationMatched={() => patch({ guidanceReady: true })} onContinueWithoutCamera={() => { camera.stop(); patch({ guidanceReady: true, cameraFree: true }); }} onPlaybackProblem={camera.reportPlaybackProblem} onDone={completeGuidanceStep} onPrevious={() => patch({ guidanceMode: "undo" })} onRestart={() => state.moveIndex > 0 && patch({ guidanceMode: "restart", restartCursor: state.moveIndex })} onRescan={() => void resetFlow()} />}
       {state.screen === "solved" && <SolvedCamera stream={camera.stream} moveCount={state.solution?.moveCount ?? 0} onPlaybackProblem={camera.reportPlaybackProblem} onSolveAnother={() => void resetFlow()} />}

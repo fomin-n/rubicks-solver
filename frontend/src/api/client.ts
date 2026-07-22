@@ -7,12 +7,13 @@ const facelets = z.record(face, z.array(color).length(4));
 const capturedFace = z.object({
   face, previewHex: z.array(z.string()).length(4), predictedColors: z.array(color.nullable()).length(4),
   confidence: z.array(z.number()).length(4), provisional: z.boolean(), warnings: z.array(z.string()),
-  warningCodes: z.array(z.string()),
+  warningCodes: z.array(z.string()), source: z.enum(["scanned", "inferred"]),
 });
 const sessionSchema = z.object({
   sessionId: z.string().uuid(), scanOrder: z.array(face), scannedFaces: z.array(face), nextFace: face.nullable(),
   expiresAt: z.string(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
   capturedFaces: z.partialRecord(face, capturedFace),
+  completionStatus: z.enum(["pending", "unique", "none", "ambiguous"]), completionDiagnostics: z.array(z.string()),
 });
 const validationSchema = z.object({
   valid: z.boolean(), colorCounts: z.record(color, z.number()),
@@ -42,6 +43,8 @@ const uploadSchema = z.object({
   }),
   scansComplete: z.boolean(), facelets: facelets.nullable(), confidence: z.record(face, z.array(z.number())).nullable(),
   preview: capturedFace, capturedFaces: z.partialRecord(face, capturedFace),
+  completionStatus: z.enum(["pending", "unique", "none", "ambiguous"]), completionDiagnostics: z.array(z.string()),
+  validation: validationSchema.nullable(),
 });
 
 export class ApiClientError extends Error {

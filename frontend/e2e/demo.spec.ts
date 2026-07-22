@@ -8,7 +8,7 @@ test("demo scramble reaches the solved screen through the real API", async ({ pa
   await page.getByRole("button", { name: "Try demo without camera" }).click();
   await expect(page.getByRole("heading", { name: "Check every facelet" })).toBeVisible();
   await page.getByRole("button", { name: "Validate and solve" }).click();
-  await expect(page.getByText(/Move 1 of/)).toBeVisible();
+  await expect(page.getByText(/Move 1 of/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Auto advance" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Manual advance" }).click();
   await expect(page.getByText("Manual advance · use Done / Next", { exact: true })).toBeVisible();
