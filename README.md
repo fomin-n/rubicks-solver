@@ -10,7 +10,9 @@ white, green, and yellow cubes with default opposites white/yellow, red/orange, 
 
 ## Video demo
 
-[▶ Watch the Rubik's 2×2 solver demo (MP4, 11 MB)](docs/assets/rubick-solver-demo.mp4)
+[![Rubik's 2×2 Camera Solver demo](docs/assets/rubick-solver-demo-preview.gif)](docs/assets/rubick-solver-demo.mp4)
+
+[▶ Open the full-quality demo (MP4, 11 MB)](docs/assets/rubick-solver-demo.mp4)
 
 ## MVP features and limitations
 
