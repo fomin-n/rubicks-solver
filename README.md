@@ -8,6 +8,10 @@ correction is an optional recovery tool.
 The repository is intentionally named `rubicks-solver`. The application supports red, blue, orange,
 white, green, and yellow cubes with default opposites white/yellow, red/orange, and green/blue.
 
+## Video demo
+
+[▶ Watch the Rubik's 2×2 solver demo (MP4, 11 MB)](docs/assets/rubick-solver-demo.mp4)
+
 ## MVP features and limitations
 
 - Guided `F → R → B → L → U` capture with automatic hold-to-capture, manual capture,
